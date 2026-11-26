@@ -48,7 +48,10 @@ app/src/main/
 │       ├── theme/             # colours, type, shapes, motion, appearance settings
 │       ├── components/        # shared composables (top bar, search/sort, transitions, back)
 │       ├── home/              # home, daily text, add-hours sheet
-│       ├── notes/             # notes list, editor, folder components
+│       ├── notes/             # notes list, note editor screen, folder pickers
+│       ├── editor/            # reusable rich-text editor kit
+│       │   ├── richtext/      #   spans, lists, alignment, codec, styled text (no UI)
+│       │   └── components/    #   selection toolbar, format/align panels, find bar, images
 │       ├── people/            # directory, person detail & edit
 │       ├── bible/             # book browser, Bible import, scripture bottom sheet
 │       ├── settings/          # settings, appearance, customise, Gen-Z mode

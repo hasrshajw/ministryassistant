@@ -19,6 +19,8 @@ Single-module Android app, package root `com.harsha.myapplication`, organised
 | `notifications` | `AppNotifications` – channel creation and permission state |
 | `ui.theme` | Colour, typography, shapes, motion tokens, `AppearanceRepository` |
 | `ui.components` | Reusable composables used by 2+ features |
+| `ui.editor.richtext` | Editor engine, no UI: spans (`FormatSpan`, `FmtType`), list markers, per-line alignment, span/JSON codec, styled-text builder, inline-image layout |
+| `ui.editor.components` | Reusable editor UI: `SelectionToolbar`, `FormatPanel`, `AlignPanel`, `FindBar`, `AttachedImage`/`ImageViewer`, panel building blocks, tooltips |
 | `ui.<feature>` | Screens and feature-private composables |
 
 ## Rules
@@ -31,8 +33,10 @@ Single-module Android app, package root `com.harsha.myapplication`, organised
 
 ## Known follow-ups
 
-- `ui/notes/NoteEditorScreen.kt` is ~5 000 lines; split into editor state, toolbar,
-  scripture-suggestion overlay and image handling.
+- `ui/notes/NoteEditorScreen.kt` still holds one ~2 100-line `NoteEditorView` function. Its
+  local functions (`toggleFmt`, `applyList`, `undo`, `insertScripture`, ...) close over ~30 state
+  variables. Move them into a `RichTextState` holder in `ui/editor/richtext` so any screen can
+  drive `SelectionToolbar` / `FormatPanel` / `AlignPanel` without copying logic.
 - `MainActivity.kt` holds navigation, shared colour aliases (`Purple`, `CardBg`, …) and
   sample data (`DailyItem`, `sampleDaily`); move these to `navigation/` and `ui/theme`.
 - `HomeScreen` currently reaches into `ui.people` (`PersonCard`, detail/edit screens);
