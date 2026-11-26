@@ -64,6 +64,11 @@ data class PersonRecord(
     val type: String = "rv",
     val studyDay: String? = null,
     val visitLogs: List<VisitLog> = emptyList(),
+    // Added for ministry record keeping. Appended last so positional callers keep compiling.
+    val placeMet: String? = null,        // House to house, Street, Public witnessing, ...
+    val bestTime: String? = null,        // Morning / Afternoon / Evening / Weekend
+    val studyMaterial: String? = null,   // Publication + lesson for a Bible study
+    val meetingStatus: String? = null,   // Not yet / Invited / Attended once / Attends regularly
 ) {
     val hasPhone: Boolean get() = !mobile.isNullOrEmpty()
 
@@ -82,6 +87,10 @@ data class PersonRecord(
         put("type", type)
         studyDay?.let { put("studyDay", it) }
         put("visitLogs", JSONArray(visitLogs.map { it.toJson() }))
+        placeMet?.let { put("placeMet", it) }
+        bestTime?.let { put("bestTime", it) }
+        studyMaterial?.let { put("studyMaterial", it) }
+        meetingStatus?.let { put("meetingStatus", it) }
     }
 
     companion object {
@@ -104,6 +113,10 @@ data class PersonRecord(
                 type = o.optString("type", "rv"),
                 studyDay = o.optStringOrNull("studyDay"),
                 visitLogs = logs,
+                placeMet = o.optStringOrNull("placeMet"),
+                bestTime = o.optStringOrNull("bestTime"),
+                studyMaterial = o.optStringOrNull("studyMaterial"),
+                meetingStatus = o.optStringOrNull("meetingStatus"),
             )
         }
     }
@@ -124,6 +137,21 @@ object PeopleRepository {
         List(arr.length()) { PersonRecord.fromJson(arr.getJSONObject(it)) }
     } catch (_: Exception) {
         emptyList()
+    }
+
+    /** Removes the record with this id. */
+    fun delete(context: Context, id: String): Boolean = try {
+        val prefs = context.prefs()
+        val arr = JSONArray(prefs.getString(KEY, "[]") ?: "[]")
+        val out = JSONArray()
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            if (obj.optString("id") != id) out.put(obj)
+        }
+        prefs.edit().putString(KEY, out.toString()).apply()
+        true
+    } catch (_: Exception) {
+        false
     }
 
     /** Upserts a record by id. */

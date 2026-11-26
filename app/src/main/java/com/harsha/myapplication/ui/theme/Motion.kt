@@ -46,18 +46,20 @@ import androidx.compose.ui.unit.Dp
  *   • Spatial  — position, size, rotation, shape, opacity of moving surfaces.
  *                Uses *springs* so movement feels physical and interruptible.
  *   • Effects  — color, elevation, non-moving alpha fades.
- *                Uses *easing curves* so subtle transitions stay crisp.
+ *                Uses *critically damped springs* (no bounce), as in the M3 Expressive spec.
  *
  * Rule of thumb:
  *   - Something MOVES  → spatial*
  *   - Something FADES  → effects*
- *   - Never mix — a fade with a spring looks rubbery, a slide with tween looks dead.
+ *   - Never bounce a fade — effects springs are damped to 1.0 on purpose.
  *
- * All springs below use Material 3 Expressive values:
- *   stiffness ↑ = faster snap;  dampingRatio ↓ = bouncier.
- *   0.8 damping is the Expressive "personality" — a small overshoot you feel but
- *   don't see. Lower it (0.6–0.7) for playful elements, raise it (0.9+) for
- *   professional / system-level ones.
+ * All values below are the official Material 3 Expressive motion tokens
+ * (same numbers as MotionScheme.expressive(), which MaterialExpressiveTheme gives
+ * every Material component):
+ *   spatial fast 1400 / 0.6, default 700 / 0.8, slow 300 / 0.8
+ *   effects fast 3800, default 1600, slow 800  (all damping 1.0)
+ * Prefer MaterialTheme.motionScheme inside components; use these for app-level
+ * transitions that live outside Material components.
  */
 object Motion {
 
@@ -67,55 +69,65 @@ object Motion {
 
     /** Snappy. Use for in-place moves that need to feel instant: button morph, pill slide. */
     val spatialFast: SpringSpec<Float> =
-        spring(dampingRatio = 0.8f, stiffness = 800f)
+        spring(dampingRatio = 0.6f, stiffness = 1400f)
 
     /** The workhorse. Use for state swaps, panel slides, tab changes. */
     val spatialDefault: SpringSpec<Float> =
-        spring(dampingRatio = 0.8f, stiffness = 380f)
+        spring(dampingRatio = 0.8f, stiffness = 700f)
 
     /** Deliberate. Use for full-screen / hierarchical navigation. */
     val spatialSlow: SpringSpec<Float> =
-        spring(dampingRatio = 0.85f, stiffness = 200f)
+        spring(dampingRatio = 0.8f, stiffness = 300f)
 
     /** Container transform (card→detail, FAB→sheet). Slight extra bounce. */
     val containerTransform: SpringSpec<Float> =
-        spring(dampingRatio = 0.82f, stiffness = 380f)
+        spring(dampingRatio = 0.8f, stiffness = 700f)
 
     // Dp variants for size animations (`animateDpAsState` needs AnimationSpec<Dp>)
     val spatialFastDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.8f, stiffness = 800f)
+        spring(dampingRatio = 0.6f, stiffness = 1400f)
     val spatialDefaultDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.8f, stiffness = 380f)
+        spring(dampingRatio = 0.8f, stiffness = 700f)
     val spatialSlowDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.85f, stiffness = 200f)
+        spring(dampingRatio = 0.8f, stiffness = 300f)
 
     // ---------------------------------------------------------------- Effects
     // FastOutLinearIn = "decelerate into the end". Reads as instant but smooth.
 
-    /** 150 ms. Micro fades: ripple-adjacent alpha, colour swap on press. */
+    /** Micro fades: ripple-adjacent alpha, colour swap on press. */
     val effectsFast: FiniteAnimationSpec<Float> =
-        tween(durationMillis = 150, easing = FastOutLinearInEasing)
+        spring(dampingRatio = 1f, stiffness = 3800f)
 
-    /** 300 ms. Standard visibility fades: AnimatedVisibility, Crossfade. */
+    /** Standard visibility fades: AnimatedVisibility, Crossfade. */
     val effectsDefault: FiniteAnimationSpec<Float> =
-        tween(durationMillis = 300, easing = FastOutSlowInEasing)
+        spring(dampingRatio = 1f, stiffness = 1600f)
 
-    /** 450 ms. Long alpha ramps: overlay scrims, page-level crossfades. */
+    /** Long alpha ramps: overlay scrims, page-level crossfades. */
     val effectsSlow: FiniteAnimationSpec<Float> =
-        tween(durationMillis = 450, easing = FastOutSlowInEasing)
+        spring(dampingRatio = 1f, stiffness = 800f)
 
     // ------------------------------------------------------- Generic helpers
     // For animation of other types (Int, Color, Dp) where the property above
     // has the wrong generic. Usage:  Motion.spatialFast<Dp>()
 
     fun <T> spatialFast(): SpringSpec<T> =
-        spring(dampingRatio = 0.8f, stiffness = 800f)
+        spring(dampingRatio = 0.6f, stiffness = 1400f)
 
     fun <T> spatialDefault(): SpringSpec<T> =
-        spring(dampingRatio = 0.8f, stiffness = 380f)
+        spring(dampingRatio = 0.8f, stiffness = 700f)
 
     fun <T> spatialSlow(): SpringSpec<T> =
-        spring(dampingRatio = 0.85f, stiffness = 200f)
+        spring(dampingRatio = 0.8f, stiffness = 300f)
+
+    // Effects (colour, alpha) for non-Float types, e.g. animateColorAsState(..., Motion.effectsDefault())
+    fun <T> effectsFast(): SpringSpec<T> =
+        spring(dampingRatio = 1f, stiffness = 3800f)
+
+    fun <T> effectsDefault(): SpringSpec<T> =
+        spring(dampingRatio = 1f, stiffness = 1600f)
+
+    fun <T> effectsSlow(): SpringSpec<T> =
+        spring(dampingRatio = 1f, stiffness = 800f)
 }
 
 /**

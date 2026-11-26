@@ -110,6 +110,18 @@ object NotesRepository {
         return saved
     }
 
+    /**
+     * Moves every note of category [old] to [new] (used when a folder is renamed). The notes keep
+     * their edit time, so the list order does not change.
+     */
+    fun renameCategory(old: String, new: String) {
+        val n = new.trim()
+        if (n.isEmpty() || n == old) return
+        if (notes.none { it.category.equals(old, ignoreCase = true) }) return
+        notes = notes.map { if (it.category.equals(old, ignoreCase = true)) it.copy(category = n) else it }
+        persist()
+    }
+
     /** Deletes a note and its images. */
     fun delete(id: Int) {
         val note = notes.firstOrNull { it.id == id } ?: return
@@ -129,7 +141,10 @@ object NotesRepository {
             writeLock.withLock {
                 // An earlier job may already have written the latest state while this one waited.
                 if (!dirty.getAndSet(false)) return@withLock
-                val file = atomicFile ?: return@withLock
+                val file = atomicFile ?: run {
+                    Log.e(TAG, "save() called before init(): notes were NOT written to disk")
+                    return@withLock
+                }
                 // Always write the *latest* state, so out-of-order launches can't save stale data.
                 val snapshot = notes
                 val out = file.startWrite()

@@ -12,8 +12,20 @@ data class ScriptureReference(
      * Extra passages of the same book when several are written together,
      * e.g. "Song 1:1-5,7,3:7" -> this = 1:1-5, more = [1:7, 3:7].
      */
-    val more: List<ScriptureReference> = emptyList()
+    val more: List<ScriptureReference> = emptyList(),
+    /** 1.0 for an exact name; lower when the book was worked out from a misspelling / romanization. */
+    val confidence: Float = 1f,
+    /** Closest other books (best first, includes the chosen one) when the name was fuzzy matched. */
+    val alternatives: List<BookMatch> = emptyList()
 )
+
+/** True when the name was fuzzy matched and another book scored almost as high. */
+val ScriptureReference.isAmbiguous: Boolean
+    get() = alternatives.isAmbiguous
+
+/** Book name of a match in the active Bible's language. */
+val BookMatch.displayName: String
+    get() = BibleData.displayBookName(book)
 
 /** Every passage in this reference, in the order written (just one for a plain reference). */
 val ScriptureReference.allPassages: List<ScriptureReference>

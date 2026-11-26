@@ -7,23 +7,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.harsha.myapplication.Lexend
-import com.harsha.myapplication.Purple
-import com.harsha.myapplication.TextDark
-import com.harsha.myapplication.TextMuted
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FormatQuote
 import com.harsha.myapplication.scripture.BibleData
+import com.harsha.myapplication.scripture.ScriptureDetector
 import com.harsha.myapplication.scripture.ScriptureReference
 import com.harsha.myapplication.scripture.allPassages
 import com.harsha.myapplication.scripture.groupByChapterRuns
@@ -43,15 +40,24 @@ private class PassageGroup(val title: String, val text: String)
 private class SheetContent(
     val title: String,
     val scriptureCount: Int,
-    val groups: List<PassageGroup>
+    val groups: List<PassageGroup>,
+    /** Text inserted into the note by "Add scripture text to notes" (reference + verses). */
+    val quote: String = "",
+    /** Null when the reference exists in the active Bible; otherwise a short explanation. */
+    val errorMessage: String? = null
 )
 
 /**
  * Modal bottom sheet showing the verse text for a reference (Material 3).
  *
- *  - drag handle (default), fixed header with title + count + close icon,
- *  - scrollable content in the middle, fixed full-width Close button at the bottom,
- *  - dividers appear only while content is scrolled under the header / above the action bar.
+ * Styled like the Add-hours sheet: surfaceContainerLow container, 24dp side margins, a titleLarge
+ * header with a bodyMedium subtitle, hairline dividers between sections, 48dp tonal action buttons
+ * and a 56dp primary Close button. Colours, shapes and type all come from MaterialTheme.
+ *
+ *  - fixed header (title + subtitle),
+ *  - scrollable passage cards in the middle,
+ *  - fixed action area at the bottom (insert / remove quote, correct name, Close),
+ *  - the dividers around the scrolling area fade in only while content is scrolled under them.
  *
  * Book names follow the active Bible's language. Consecutive passages of one chapter share a card.
  * Text always comes from the active Bible (BibleData.activeBible).
@@ -67,30 +73,62 @@ private class SheetContent(
  *    and the compiler picks the wrong one. Crossfade has only a top-level version.
  *    The layout is also pixel-stable: the 1 dp slot is always reserved, only the line's
  *    alpha changes.
- *  • Close icon and Close button both shrink on press for the Expressive tactile feel.
+ *  • Buttons shrink on press for the Expressive tactile feel.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScriptureBottomSheet(
     reference: ScriptureReference,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /**
+     * Called when the user taps "Correct to …" for a fuzzy-matched name.
+     * [start]..[end] is the range in the note text to replace with [corrected].
+     */
+    onCorrectName: ((start: Int, end: Int, corrected: String) -> Unit)? = null,
+    /** True when this reference's verse text is already quoted in the note. */
+    isInNote: Boolean = false,
+    /** "Add scripture text to notes": receives the quote text to insert after the reference. */
+    onInsertQuote: ((reference: ScriptureReference, quote: String) -> Unit)? = null,
+    /** "Remove scripture from notes": removes the quote previously inserted for [reference]. */
+    onRemoveQuote: ((reference: ScriptureReference) -> Unit)? = null
 ) {
+    val colors = MaterialTheme.colorScheme
+
     // Reading `version` makes the sheet refresh if the Bible is switched while it is open.
     val dataVersion = BibleData.version
     val content = remember(reference, dataVersion) {
         val bookName = BibleData.displayBookName(reference.book)
         val passages = reference.allPassages
-        val groups = passages.groupByChapterRuns()
-        SheetContent(
-            title = reference.localizedKey,
-            scriptureCount = passages.size,
-            groups = groups.map { group ->
+        val error = BibleData.validatePassageMessage(reference)
+        if (error != null) {
+            SheetContent(
+                title = reference.localizedKey,
+                scriptureCount = passages.size,
+                groups = emptyList(),
+                errorMessage = error
+            )
+        } else {
+            val groups = passages.groupByChapterRuns().map { group ->
                 PassageGroup(
                     title = passagesKey(bookName, group),
                     text = group.joinToString("\n\n") { BibleData.getPassage(it) }
                 )
             }
-        )
+            SheetContent(
+                title = reference.localizedKey,
+                scriptureCount = passages.size,
+                groups = groups,
+                quote = groups.joinToString("\n\n") { "“${it.text}” — ${it.title}" }
+            )
+        }
+    }
+
+    // Offer correction whenever the typed text is not already the proper form in the
+    // active Bible's language. Covers fuzzy romanization ("2yuvhan"), typos, and
+    // short aliases ("Jn", "Matt") so the note can be cleaned up to "2 John" / "యోహాను".
+    val correctLabel = remember(reference, dataVersion) {
+        val proper = reference.localizedKey
+        if (proper.equals(reference.rawText, ignoreCase = true)) null else proper
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -109,9 +147,10 @@ fun ScriptureBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        containerColor = colors.surfaceContainerLow,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            SheetHeader(content.title, content.scriptureCount, onClose = close)
+            SheetHeader(content.title, content.scriptureCount)
 
             // Divider slot: the 1 dp space is always reserved, only the line's alpha
             // animates. Before, `if (canScrollBackward) Divider() else Spacer(1.dp)`
@@ -120,23 +159,7 @@ fun ScriptureBottomSheet(
             // Crossfade instead of AnimatedVisibility: inside a Column that contains
             // Rows, AnimatedVisibility can resolve to the ColumnScope extension and
             // fail to compile. Crossfade has no scoped overload.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-            ) {
-                Crossfade(
-                    targetState = scrollState.canScrollBackward,
-                    animationSpec = Motion.effectsFast,
-                    label = "topDivider"
-                ) { show ->
-                    if (show) {
-                        HorizontalDivider()
-                    } else {
-                        Spacer(Modifier.fillMaxWidth())
-                    }
-                }
-            }
+            ScrollDivider(visible = scrollState.canScrollBackward, label = "topDivider")
 
             SheetBody(
                 content = content,
@@ -145,78 +168,166 @@ fun ScriptureBottomSheet(
             )
 
             // Same treatment as the top divider.
-            Box(
+            ScrollDivider(visible = scrollState.canScrollForward, label = "bottomDivider")
+
+            // Action area: 12dp between buttons, 24dp side margins (same rhythm as the Add-hours sheet).
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 16.dp, bottom = 24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Crossfade(
-                    targetState = scrollState.canScrollForward,
-                    animationSpec = Motion.effectsFast,
-                    label = "bottomDivider"
-                ) { show ->
-                    if (show) {
-                        HorizontalDivider()
-                    } else {
-                        Spacer(Modifier.fillMaxWidth())
+                // Insert / remove the verse text as a quote in the note.
+                if (content.errorMessage == null && content.quote.isNotEmpty()) {
+                    if (isInNote && onRemoveQuote != null) {
+                        val removeSrc = remember { MutableInteractionSource() }
+                        FilledTonalButton(
+                            onClick = {
+                                onRemoveQuote(reference)
+                                close()
+                            },
+                            interactionSource = removeSrc,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .pressScale(removeSrc),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = colors.errorContainer,
+                                contentColor = colors.onErrorContainer
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.IconSize)
+                            )
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                            Text(
+                                "Remove scripture from notes",
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
+                            )
+                        }
+                    } else if (!isInNote && onInsertQuote != null) {
+                        val insertSrc = remember { MutableInteractionSource() }
+                        FilledTonalButton(
+                            onClick = {
+                                onInsertQuote(reference, content.quote)
+                                close()
+                            },
+                            interactionSource = insertSrc,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .pressScale(insertSrc)
+                        ) {
+                            Icon(
+                                Icons.Default.FormatQuote,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.IconSize)
+                            )
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                            Text(
+                                "Add scripture text to notes",
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
-            }
 
-            val closeBtnSrc = remember { MutableInteractionSource() }
-            Button(
-                onClick = close,
-                interactionSource = closeBtnSrc,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-                    .navigationBarsPadding()
-                    .pressScale(closeBtnSrc),
-                colors = ButtonDefaults.buttonColors(containerColor = Purple)
-            ) {
-                Text("Close", fontFamily = Lexend)
+                // Fuzzy name correction: replaces "luka 25:1" with "Luke 25:1" / "లూకా 25:1"
+                if (correctLabel != null && onCorrectName != null) {
+                    val correctSrc = remember { MutableInteractionSource() }
+                    OutlinedButton(
+                        onClick = {
+                            // Teach the matcher so the same spelling resolves faster next time.
+                            ScriptureDetector.recordChoice(reference.rawText, reference.book)
+                            onCorrectName(reference.startIndex, reference.endIndex, correctLabel)
+                            close()
+                        },
+                        interactionSource = correctSrc,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .pressScale(correctSrc),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                        )
+                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                        Text(
+                            "Correct to $correctLabel",
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                val closeBtnSrc = remember { MutableInteractionSource() }
+                Button(
+                    onClick = close,
+                    interactionSource = closeBtnSrc,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .pressScale(closeBtnSrc)
+                ) {
+                    Text("Close", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
     }
 }
 
+/** 1 dp slot that is always reserved; the hairline only fades in while content scrolls under it. */
 @Composable
-private fun SheetHeader(title: String, count: Int, onClose: () -> Unit) {
-    Row(
+private fun ScrollDivider(visible: Boolean, label: String) {
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 24.dp, end = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(1.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                fontFamily = Lexend,
-                color = Purple
-            )
-            if (count > 1) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "$count scriptures",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = Lexend,
-                    color = TextMuted
-                )
+        Crossfade(
+            targetState = visible,
+            animationSpec = Motion.effectsFast,
+            label = label
+        ) { show ->
+            if (show) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            } else {
+                Spacer(Modifier.fillMaxWidth())
             }
         }
-        // Small icon button: bigger press-scale delta than a regular button
-        // (0.85 vs 0.96) because icon buttons have a smaller visual footprint.
-        val iconSrc = remember { MutableInteractionSource() }
-        IconButton(
-            onClick = onClose,
-            interactionSource = iconSrc,
-            modifier = Modifier.pressScale(iconSrc, pressedScale = 0.85f),
-        ) {
-            Icon(Icons.Default.Close, contentDescription = "Close")
-        }
+    }
+}
+
+/** Title + subtitle, like the Add-hours header (the Close button at the bottom dismisses the sheet). */
+@Composable
+private fun SheetHeader(title: String, count: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(top = 4.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.semantics { heading() },
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = if (count > 1) "$count scriptures" else "Scripture",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -226,18 +337,58 @@ private fun SheetBody(
     scrollState: androidx.compose.foundation.ScrollState,
     modifier: Modifier = Modifier
 ) {
+    val colors = MaterialTheme.colorScheme
+    val error = content.errorMessage
+    if (error != null) {
+        Column(
+            modifier = modifier
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = colors.errorContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .revealOnEnter(index = 1, offsetY = 12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Passage not found",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.onErrorContainer
+                    )
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = colors.onErrorContainer
+                    )
+                    Text(
+                        text = "Current Bible: ${BibleData.currentTranslationName}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onErrorContainer.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
+        return
+    }
+
     val severalCards = content.groups.size > 1
     Column(
         modifier = modifier
             .verticalScroll(scrollState)
-            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         content.groups.forEachIndexed { index, group ->
-            if (index > 0) Spacer(modifier = Modifier.height(12.dp))
             if (severalCards) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = MaterialTheme.shapes.large,
+                    color = colors.surfaceContainerHighest,
                     // Cards rise into place one after another once the sheet has settled.
                     modifier = Modifier
                         .fillMaxWidth()
@@ -258,21 +409,19 @@ private fun SheetBody(
 
 @Composable
 private fun PassageText(group: PassageGroup, showTitle: Boolean) {
+    val colors = MaterialTheme.colorScheme
     if (showTitle) {
         Text(
             text = group.title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            fontFamily = Lexend,
-            color = Purple
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.primary
         )
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
     Text(
         text = group.text,
         style = MaterialTheme.typography.bodyLarge,
-        fontFamily = Lexend,
-        color = TextDark,
+        color = colors.onSurface,
         lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.35f
     )
 }

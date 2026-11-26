@@ -186,6 +186,15 @@ object BibleData {
             isLoading = true
         }
         ioScope.launch { loadFromDisk() }
+        // Teach the book matcher the 300 romanized spellings per book (background, ~50 ms).
+        val app = appContext
+        if (app != null) ioScope.launch {
+            try {
+                app.assets.open("telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
+            } catch (e: Exception) {
+                Log.w(TAG, "Book name variants not loaded", e)
+            }
+        }
     }
 
     private fun biblesDir(): File? {
@@ -466,13 +475,68 @@ object BibleData {
     fun displayBookName(canonical: String): String =
         active?.displayNames?.get(canonical) ?: canonical
 
+    /**
+     * Whether every verse of [ref] (including [ScriptureReference.more]) exists in the active Bible.
+     * Uses the chapter index, so it is O(verses in the chapter), not a full scan.
+     */
+    fun isValidPassage(ref: ScriptureReference): Boolean {
+        fun ok(r: ScriptureReference): Boolean {
+            val matched = current().chapterVerses(r.book, r.chapter).filter { it.inRefRange(r) }
+            if (matched.isEmpty()) return false
+            val want = if (r.endVerse == null) 1 else (r.endVerse - r.verse + 1).coerceAtLeast(1)
+            return matched.size >= want
+        }
+        return ok(ref) && ref.more.all { ok(it) }
+    }
+
+    /**
+     * Human-readable reason why [ref] is missing, or null when the passage exists.
+     * Examples:
+     *  - "Luke has 24 chapters. You selected chapter 25."
+     *  - "Luke 24 has 53 verses. You selected verse 99."
+     *  - "Luke is not in the current Bible (Sample (limited))."
+     */
+    fun validatePassageMessage(ref: ScriptureReference): String? {
+        if (isValidPassage(ref)) return null
+
+        val bible = current()
+        val display = displayBookName(ref.book)
+        val outline = bible.outline
+        // Resolve by canonical or display name
+        val chapters = outline[ref.book]
+            ?: outline.entries.firstOrNull { it.key.equals(ref.book, ignoreCase = true) }?.value
+            ?: outline.entries.firstOrNull {
+                bible.displayNames[it.key]?.equals(ref.book, ignoreCase = true) == true
+            }?.value
+
+        if (chapters == null) {
+            return "$display is not in the current Bible ($currentTranslationName)."
+        }
+
+        val chapterCount = chapters.size
+        val maxChapter = chapters.keys.maxOrNull() ?: 0
+        if (ref.chapter !in chapters) {
+            return "$display has $chapterCount chapters (1–$maxChapter). You selected chapter ${ref.chapter}."
+        }
+
+        val verseNums = chapters[ref.chapter].orEmpty()
+        val verseCount = verseNums.size
+        val maxVerse = verseNums.maxOrNull() ?: 0
+        val selected = when {
+            ref.endVerse != null && ref.endVerse != ref.verse ->
+                "verses ${ref.verse}–${ref.endVerse}"
+            else -> "verse ${ref.verse}"
+        }
+        return "$display ${ref.chapter} has $verseCount verses (1–$maxVerse). You selected $selected."
+    }
+
     fun getPassage(ref: ScriptureReference): String {
         val matched = current().chapterVerses(ref.book, ref.chapter).filter { it.inRefRange(ref) }
 
         return if (matched.isEmpty()) {
-            "Verse not found for ${ref.localizedKey}.\n\n" +
-                    "Current Bible: $currentTranslationName\n" +
-                    "Try importing the full NWT JWPUB."
+            val detail = validatePassageMessage(ref)
+                ?: "Verse not found for ${ref.localizedKey}."
+            "$detail\n\nCurrent Bible: $currentTranslationName"
         } else {
             matched.joinToString("\n\n") { "${it.verse} ${it.text}" }
         }

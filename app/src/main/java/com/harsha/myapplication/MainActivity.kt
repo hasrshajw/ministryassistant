@@ -9,7 +9,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -18,11 +17,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -49,7 +47,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -66,34 +67,43 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.harsha.myapplication.data.NotesRepository
 import com.harsha.myapplication.scripture.BibleData
+import com.harsha.myapplication.ui.AboutScreen
+import com.harsha.myapplication.ui.AppNotifications
+import com.harsha.myapplication.ui.AppearanceSettingsScreen
+import com.harsha.myapplication.ui.CustomizeAppScreen
 import com.harsha.myapplication.ui.DailyTextScreen
+import com.harsha.myapplication.ui.GenZModeScreen
 import com.harsha.myapplication.ui.HomeScreen
 import com.harsha.myapplication.ui.ImportBibleScreen
 import com.harsha.myapplication.ui.NoteEditorView
 import com.harsha.myapplication.ui.NotesScreen
 import com.harsha.myapplication.ui.PeopleScreen
+import com.harsha.myapplication.ui.PrivacyScreen
+import com.harsha.myapplication.ui.ProfileScreen
 import com.harsha.myapplication.ui.SettingsScreen
+import com.harsha.myapplication.ui.SetupRepository
+import com.harsha.myapplication.ui.SetupWizardScreen
+import com.harsha.myapplication.ui.TermsScreen
 import com.harsha.myapplication.ui.components.AppSharedTransitionHost
 import com.harsha.myapplication.ui.components.ProvideAnimatedVisibilityScope
 import com.harsha.myapplication.ui.components.predictiveBackPeek
 import com.harsha.myapplication.ui.sampleDaily
+import com.harsha.myapplication.ui.theme.AppearanceRepository
 import com.harsha.myapplication.ui.theme.MotionTransitions
 import com.harsha.myapplication.ui.theme.Motion
 import com.harsha.myapplication.ui.theme.MyApplicationTheme
+import com.harsha.myapplication.ui.theme.StudyBackground
+import com.harsha.myapplication.ui.theme.StudyDeepGreen
+import com.harsha.myapplication.ui.theme.StudyEmerald
+import com.harsha.myapplication.ui.theme.StudyGreenTint
+import com.harsha.myapplication.ui.theme.StudyNeutralLight
+import com.harsha.myapplication.ui.theme.StudyOnNeutralDark
+import com.harsha.myapplication.ui.theme.StudyTextPrimary
+import com.harsha.myapplication.ui.theme.StudyTextSecondary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-// ---------- Colors (Package-visible across screens) ----------
-val Purple = Color(0xFF6B5B95)
-val SearchBg = Color(0xFFEDE7F8)
-val CardBg = Color(0xFFE4DBF5)
-val PillBg = Color(0xFFE6E1E8)
-val ScreenBg = Color(0xFFF1EEF4)
-val DotGray = Color(0xFFC9C5CF)
-val TextDark = Color(0xFF1B1B1F)
-val TextMuted = Color(0xFF5F5B66)
 
 // Lexend font family
 val Lexend = FontFamily(
@@ -102,6 +112,18 @@ val Lexend = FontFamily(
     Font(R.font.lexend_bold, FontWeight.SemiBold),
     Font(R.font.lexend_bold, FontWeight.Bold),
 )
+
+// ---------- Legacy color aliases (kept for existing screens) ----------
+// Mapped onto the new green brand palette so older screens still compile.
+// Prefer MaterialTheme.colorScheme in new code.
+val Purple = StudyDeepGreen                     // primary brand (was lavender)
+val SearchBg = StudyGreenTint                   // soft green container
+val CardBg = StudyNeutralLight
+val PillBg = StudyNeutralLight
+val ScreenBg = StudyBackground
+val DotGray = StudyOnNeutralDark
+val TextDark = StudyTextPrimary
+val TextMuted = StudyTextSecondary
 
 // ---------- Models ----------
 data class DailyItem(
@@ -119,26 +141,65 @@ class MainActivity : ComponentActivity() {
         // Returns immediately: saved Bibles are read on a background thread.
         BibleData.init(applicationContext)
         NotesRepository.init(applicationContext)
+        // Load the saved theme BEFORE the first frame so there is no flash of the wrong theme.
+        AppearanceRepository.init(applicationContext)
+        SetupRepository.init(applicationContext)
+        AppNotifications.ensureChannel(applicationContext)
         enableEdgeToEdge()
         setContent {
-            // ---- Theme-switch crossfade ----
-            // When the system theme (or a manual override) flips, the palette morphs
-            // over 300 ms instead of flashing. `isSystemInDarkTheme()` is the trigger;
-            // passing it down explicitly means MyApplicationTheme's own default is
-            // overridden during the transition.
-            val darkTheme = isSystemInDarkTheme()
-            Crossfade(
-                targetState = darkTheme,
-                animationSpec = Motion.effectsDefault,
-                label = "themeCrossfade",
-            ) { dark ->
-                MyApplicationTheme(darkTheme = dark) {
-                    // ---- SharedTransition host ----
-                    // Installs SharedTransitionLayout and publishes the scope to the
-                    // CompositionLocal. Any descendant can now use
-                    // Modifier.appSharedBounds / appSharedElement.
-                    AppSharedTransitionHost {
-                        MainAppScaffold()
+            // ---- Appearance settings ----
+            // Saved choices (theme mode, palette, dynamic colour, pure black) live in
+            // AppearanceRepository; this is Compose state, so changing them in the Appearance
+            // screen re-themes the whole app live.
+            val appearance = AppearanceRepository.prefs
+            val darkTheme = appearance.themeMode.isDark(isSystemInDarkTheme())
+
+            // Status / navigation bar icon colours must follow the IN-APP theme, not the system one
+            // (e.g. user forces Light while the phone is in Dark). Only the icon appearance is
+            // touched; enableEdgeToEdge() is NOT called again, so the window is left alone.
+            val view = LocalView.current
+            SideEffect {
+                val controller = WindowCompat.getInsetsController(window, view)
+                controller.isAppearanceLightStatusBars = !darkTheme
+                controller.isAppearanceLightNavigationBars = !darkTheme
+            }
+
+            // No Crossfade / key() around the app here: that would re-create MainAppScaffold on every
+            // theme change and reset navigation to Home. MyApplicationTheme animates the colours
+            // in place instead.
+            MyApplicationTheme(
+                darkTheme = darkTheme,
+                palette = appearance.palette,
+                dynamicColor = appearance.dynamicColor,
+                pureBlack = appearance.pureBlack,
+            ) {
+                // Wizard -> app: the wizard's final button has already morphed into the Monthly
+                // progress card; the app now rises in with an Expressive spatial spring while the
+                // wizard fades out underneath.
+                AnimatedContent(
+                    targetState = SetupRepository.isSetupCompleted,
+                    transitionSpec = {
+                        (fadeIn(Motion.effectsSlow) +
+                                scaleIn(Motion.spatialSlow, initialScale = 0.94f)) togetherWith
+                                fadeOut(Motion.effectsDefault)
+                    },
+                    label = "setup_to_main",
+                ) { setupDone ->
+                    if (!setupDone) {
+                        val context = LocalContext.current
+                        SetupWizardScreen(
+                            onFinished = {
+                                SetupRepository.setSetupCompleted(context, true)
+                            }
+                        )
+                    } else {
+                        // ---- SharedTransition host ----
+                        // Installs SharedTransitionLayout and publishes the scope to the
+                        // CompositionLocal. Any descendant can now use
+                        // Modifier.appSharedBounds / appSharedElement.
+                        AppSharedTransitionHost {
+                            MainAppScaffold()
+                        }
                     }
                 }
             }
@@ -146,8 +207,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// The three possible sub-screens that can appear over the tab content.
-private enum class SubScreen { Bibles, DailyText, NoteEditor }
+/**
+ * Lets any full-screen editor shown inside a tab (e.g. PersonEditScreen) hide the bottom bar
+ * while it is on screen. Call with true when it appears and false when it leaves.
+ */
+val LocalSetBottomBarHidden = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
+
+// The sub-screens that can appear over the tab content.
+private enum class SubScreen {
+    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy
+}
 
 // ---------- Main Scaffold with Bottom Navigation ----------
 @Composable
@@ -160,10 +229,22 @@ fun MainAppScaffold() {
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showNoteEditor by rememberSaveable { mutableStateOf(false) }
     var editingNoteId by rememberSaveable { mutableStateOf<Int?>(null) }
+    // Folder that a NEW note should start in (the folder selected in the Notes list, if any).
+    var newNoteFolder by rememberSaveable { mutableStateOf<String?>(null) }
+    var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showAppearance by rememberSaveable { mutableStateOf(false) }
+    var showProfile by rememberSaveable { mutableStateOf(false) }
+    var showGenZMode by rememberSaveable { mutableStateOf(false) }
+    var showCustomizeApp by rememberSaveable { mutableStateOf(false) }
+    var showTerms by rememberSaveable { mutableStateOf(false) }
+    var showPrivacy by rememberSaveable { mutableStateOf(false) }
+
     // True while the Notes side menu (push drawer) is open: the bottom bar hides and the notes
     // screen grows into the space it leaves.
     var notesDrawerOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(selectedScreen) { if (selectedScreen != 1) notesDrawerOpen = false }
+    // True while a full-screen editor (new / edit person) is open over a tab.
+    var bottomBarHidden by remember { mutableStateOf(false) }
 
     val tabStateHolder = rememberSaveableStateHolder()
 
@@ -172,6 +253,13 @@ fun MainAppScaffold() {
         showBibles -> SubScreen.Bibles
         showDailyText -> SubScreen.DailyText
         showNoteEditor -> SubScreen.NoteEditor
+        showAbout -> SubScreen.About
+        showAppearance -> SubScreen.Appearance
+        showProfile -> SubScreen.Profile
+        showGenZMode -> SubScreen.GenZMode
+        showCustomizeApp -> SubScreen.CustomizeApp
+        showTerms -> SubScreen.Terms
+        showPrivacy -> SubScreen.Privacy
         else -> null
     }
 
@@ -189,6 +277,13 @@ fun MainAppScaffold() {
             SubScreen.Bibles -> showBibles = false
             SubScreen.DailyText -> showDailyText = false
             SubScreen.NoteEditor -> showNoteEditor = false
+            SubScreen.About -> showAbout = false
+            SubScreen.Appearance -> showAppearance = false
+            SubScreen.Profile -> showProfile = false
+            SubScreen.GenZMode -> showGenZMode = false
+            SubScreen.CustomizeApp -> showCustomizeApp = false
+            SubScreen.Terms -> showTerms = false
+            SubScreen.Privacy -> showPrivacy = false
             null -> {}
         }
     }
@@ -230,148 +325,193 @@ fun MainAppScaffold() {
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            // Bottom bar rises with a spring as a sub-screen exits, drops the same way
-            // as one opens. Was using default AnimatedVisibility tween (240ms linear-ish).
-            AnimatedVisibility(
-                visible = subScreen == null && !notesDrawerOpen,
-                enter = slideInVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                        fadeIn(Motion.effectsFast),
-                exit = slideOutVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                        fadeOut(Motion.effectsFast),
-            ) {
-                AppBottomNavBar(
-                    currentIndex = selectedScreen,
-                    onTap = { selectTab(it) },
-                )
+    CompositionLocalProvider(LocalSetBottomBarHidden provides { bottomBarHidden = it }) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                // Bottom bar rises with a spring as a sub-screen exits, drops the same way
+                // as one opens. Was using default AnimatedVisibility tween (240ms linear-ish).
+                AnimatedVisibility(
+                    visible = subScreen == null && !notesDrawerOpen && !bottomBarHidden,
+                    enter = slideInVertically(Motion.spatialDefault<IntOffset>()) { it } +
+                            fadeIn(Motion.effectsFast),
+                    exit = slideOutVertically(Motion.spatialDefault<IntOffset>()) { it } +
+                            fadeOut(Motion.effectsFast),
+                ) {
+                    AppBottomNavBar(
+                        currentIndex = selectedScreen,
+                        onTap = { selectTab(it) },
+                    )
+                }
             }
-        }
-    ) { scaffoldPadding ->
-        // While the Notes menu is open the bottom bar is gone, so the content grows down to the
-        // system navigation inset; the padding springs in step with the bar sliding away / back.
-        val layoutDirection = LocalLayoutDirection.current
-        val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val bottomPadding by animateDpAsState(
-            targetValue = if (notesDrawerOpen) navInset else scaffoldPadding.calculateBottomPadding(),
-            animationSpec = Motion.spatialDefaultDp,
-            label = "contentBottomPadding",
-        )
-        val innerPadding = PaddingValues(
-            start = scaffoldPadding.calculateStartPadding(layoutDirection),
-            top = scaffoldPadding.calculateTopPadding(),
-            end = scaffoldPadding.calculateEndPadding(layoutDirection),
-            bottom = bottomPadding,
-        )
-        // The Scaffold already reserves the status bar and the bottom bar (which handles the
-        // system navigation inset itself). Each screen applies this modifier itself, which pads it
-        // and marks those insets as consumed so screens that call navigationBarsPadding() /
-        // statusBarsPadding() don't add the same space a second time.
-        // The Notes tab is the exception: it receives the padding as `contentPadding` and paints
-        // its own background edge-to-edge, so the status bar and navigation bar areas always match
-        // the side menu / notes colors.
-        val screenInsets = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .consumeWindowInsets(innerPadding)
+        ) { scaffoldPadding ->
+            // While the Notes menu is open the bottom bar is gone, so the content grows down to the
+            // system navigation inset; the padding springs in step with the bar sliding away / back.
+            val layoutDirection = LocalLayoutDirection.current
+            val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val bottomPadding by animateDpAsState(
+                targetValue = if (notesDrawerOpen || bottomBarHidden) navInset else scaffoldPadding.calculateBottomPadding(),
+                animationSpec = Motion.spatialDefaultDp,
+                label = "contentBottomPadding",
+            )
+            val innerPadding = PaddingValues(
+                start = scaffoldPadding.calculateStartPadding(layoutDirection),
+                top = scaffoldPadding.calculateTopPadding(),
+                end = scaffoldPadding.calculateEndPadding(layoutDirection),
+                bottom = bottomPadding,
+            )
+            // The Scaffold already reserves the status bar and the bottom bar (which handles the
+            // system navigation inset itself). Each screen applies this modifier itself, which pads it
+            // and marks those insets as consumed so screens that call navigationBarsPadding() /
+            // statusBarsPadding() don't add the same space a second time.
+            // The Notes tab is the exception: it receives the padding as `contentPadding` and paints
+            // its own background edge-to-edge, so the status bar and navigation bar areas always match
+            // the side menu / notes colors.
+            val screenInsets = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            // ---- Navigation transitions ----
-            //  tabs  ↔ Daily text / Note editor : container fade (Daily text also morphs from the
-            //                                     card through appSharedBoundsOrNone)
-            //  tabs  ↔ Bibles                   : push / pop (hierarchical, parallax)
-            // On pop the closing screen stays on top (zIndex) so you actually see it leave.
-            AnimatedContent(
-                targetState = when {
-                    showBibles -> 1
-                    showDailyText -> 2
-                    showNoteEditor -> 3
-                    else -> 0
-                },
-                transitionSpec = {
-                    val from = initialState
-                    val to = targetState
-                    val forward = to > from
-                    if (to >= 2 || from >= 2) MotionTransitions.containerFade(forward)
-                    else if (forward) MotionTransitions.push()
-                    else MotionTransitions.pop()
-                },
-                label = "sub_screens"
-            ) { state ->
-                ProvideAnimatedVisibilityScope(this) {
-                    if (state == 0) {
-                        // ---- Tabs: siblings → Material fade-through (fade + 92% → 100% scale) ----
-                        AnimatedContent(
-                            targetState = selectedScreen,
-                            transitionSpec = { MotionTransitions.fadeThrough() },
-                            label = "tabs"
-                        ) { screen ->
-                            tabStateHolder.SaveableStateProvider(screen) {
-                                when (screen) {
-                                    0 -> Box(screenInsets) {
-                                        HomeScreen(
-                                            onNotesTabClick = { selectTab(1) },
-                                            onBibleTabClick = { selectTab(2) },
-                                            onDailyTextClick = { index ->
-                                                selectedDayIndex = index
-                                                showDailyText = true
-                                            },
-                                            onAddNotesClick = {
+            // Sub-screens (Bibles, Daily text, Note editor, About) hide the bottom bar, so they get
+            // a FIXED bottom padding = the system navigation inset. It is never animated: using the
+            // animated `innerPadding` made anything pinned to the bottom of a sub-screen start at the
+            // bottom bar's height and slide down while the bar left.
+            val subScreenPadding = PaddingValues(
+                start = scaffoldPadding.calculateStartPadding(layoutDirection),
+                top = scaffoldPadding.calculateTopPadding(),
+                end = scaffoldPadding.calculateEndPadding(layoutDirection),
+                bottom = navInset,
+            )
+            val subScreenInsets = Modifier
+                .fillMaxSize()
+                .padding(subScreenPadding)
+                .consumeWindowInsets(subScreenPadding)
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                // ---- Navigation transitions ----
+                //  tabs  ↔ Daily text / Note editor : container fade (Daily text also morphs from the
+                //                                     card through appSharedBoundsOrNone)
+                //  tabs  ↔ Bibles                   : push / pop (hierarchical, parallax)
+                // On pop the closing screen stays on top (zIndex) so you actually see it leave.
+                AnimatedContent(
+                    targetState = when {
+                        showBibles -> 1
+                        showDailyText -> 2
+                        showNoteEditor -> 3
+                        showAbout -> 4
+                        showAppearance -> 5
+                        showProfile -> 6
+                        showGenZMode -> 7
+                        showCustomizeApp -> 8
+                        showTerms -> 9
+                        showPrivacy -> 10
+                        else -> 0
+                    },
+                    transitionSpec = {
+                        val from = initialState
+                        val to = targetState
+                        val forward = to > from
+                        if (to >= 2 || from >= 2) MotionTransitions.containerFade(forward)
+                        else if (forward) MotionTransitions.push()
+                        else MotionTransitions.pop()
+                    },
+                    label = "sub_screens"
+                ) { state ->
+                    ProvideAnimatedVisibilityScope(this) {
+                        if (state == 0) {
+                            // ---- Tabs: siblings → Material fade-through (fade + 92% → 100% scale) ----
+                            AnimatedContent(
+                                targetState = selectedScreen,
+                                transitionSpec = { MotionTransitions.fadeThrough() },
+                                label = "tabs"
+                            ) { screen ->
+                                tabStateHolder.SaveableStateProvider(screen) {
+                                    when (screen) {
+                                        0 -> Box(screenInsets) {
+                                            HomeScreen(
+                                                onNotesTabClick = { selectTab(1) },
+                                                onBibleTabClick = { selectTab(2) },
+                                                onDailyTextClick = { index ->
+                                                    selectedDayIndex = index
+                                                    showDailyText = true
+                                                },
+                                                onAddNotesClick = {
+                                                    editingNoteId = null
+                                                    newNoteFolder = null
+                                                    showNoteEditor = true
+                                                }
+                                            )
+                                        }
+                                        1 -> NotesScreen(
+                                            notes = NotesRepository.notes,
+                                            searchQuery = searchQuery,
+                                            onSearchQueryChange = { searchQuery = it },
+                                            onAddNoteClick = { folder ->
                                                 editingNoteId = null
+                                                newNoteFolder = folder
                                                 showNoteEditor = true
-                                            }
+                                            },
+                                            onNoteClick = { note ->
+                                                editingNoteId = note.id
+                                                showNoteEditor = true
+                                            },
+                                            onDrawerOpenChange = { notesDrawerOpen = it },
+                                            contentPadding = innerPadding,
                                         )
+                                        2 -> Box(screenInsets) { PeopleScreen() }
+                                        3 -> Box(screenInsets) {
+                                            SettingsScreen(
+                                                onOpenBibles = { showBibles = true },
+                                                onOpenAppearance = { showAppearance = true },
+                                                onOpenProfile = { showProfile = true },
+                                                onOpenGenZMode = { showGenZMode = true },
+                                                onOpenCustomizeApp = { showCustomizeApp = true },
+                                                onOpenTerms = { showTerms = true },
+                                                onOpenPrivacy = { showPrivacy = true },
+                                                onOpenAbout = { showAbout = true }
+                                            )
+                                        }
                                     }
-                                    1 -> NotesScreen(
-                                        notes = NotesRepository.notes,
-                                        searchQuery = searchQuery,
-                                        onSearchQueryChange = { searchQuery = it },
-                                        onAddNoteClick = {
-                                            editingNoteId = null
-                                            showNoteEditor = true
-                                        },
-                                        onNoteClick = { note ->
-                                            editingNoteId = note.id
-                                            showNoteEditor = true
-                                        },
-                                        onDrawerOpenChange = { notesDrawerOpen = it },
-                                        contentPadding = innerPadding,
-                                    )
-                                    2 -> Box(screenInsets) { PeopleScreen() }
-                                    3 -> Box(screenInsets) { SettingsScreen(onOpenBibles = { showBibles = true }) }
                                 }
                             }
-                        }
-                    } else {
-                        // ---- Sub-screens: carry the live predictive-back peek ----
-                        Box(screenInsets) {
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .predictiveBackPeek(
-                                        progress = { backProgress.value },
-                                        edgeSign = { if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f },
-                                    )
-                            ) {
-                                when (state) {
-                                    1 -> ImportBibleScreen(onBack = { showBibles = false })
-                                    2 -> DailyTextScreen(
-                                        daily = sampleDaily,
-                                        initialIndex = selectedDayIndex,
-                                        onBack = { showDailyText = false }
-                                    )
-                                    3 -> NoteEditorView(
-                                        initialNote = editingNoteId?.let { id ->
-                                            NotesRepository.notes.firstOrNull { it.id == id }
-                                        },
-                                        categories = NotesRepository.categories,
-                                        // The editor keeps its own note id after the first save, so saving a
-                                        // new note twice updates the same note. Do NOT close the screen here:
-                                        // after saving, the editor switches to view mode and closes through onBack.
-                                        onSave = { draft, existingId -> NotesRepository.save(draft, existingId) },
-                                        onBack = { showNoteEditor = false }
-                                    )
+                        } else {
+                            // ---- Sub-screens: carry the live predictive-back peek ----
+                            Box(subScreenInsets) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .predictiveBackPeek(
+                                            progress = { backProgress.value },
+                                            edgeSign = { if (backEdge == BackEventCompat.EDGE_LEFT) 1f else -1f },
+                                        )
+                                ) {
+                                    when (state) {
+                                        1 -> ImportBibleScreen(onBack = { showBibles = false })
+                                        2 -> DailyTextScreen(
+                                            daily = sampleDaily,
+                                            initialIndex = selectedDayIndex,
+                                            onBack = { showDailyText = false }
+                                        )
+                                        3 -> NoteEditorView(
+                                            initialNote = editingNoteId?.let { id ->
+                                                NotesRepository.notes.firstOrNull { it.id == id }
+                                            },
+                                            categories = NotesRepository.categories,
+                                            initialFolder = newNoteFolder,
+                                            // The editor keeps its own note id after the first save, so saving a
+                                            // new note twice updates the same note. Do NOT close the screen here:
+                                            // after saving, the editor switches to view mode and closes through onBack.
+                                            onSave = { draft, existingId -> NotesRepository.save(draft, existingId) },
+                                            onBack = { showNoteEditor = false }
+                                        )
+                                        4 -> AboutScreen(onBack = { showAbout = false })
+                                        5 -> AppearanceSettingsScreen(onBack = { showAppearance = false })
+                                        6 -> ProfileScreen(onBack = { showProfile = false })
+                                        7 -> GenZModeScreen(onBack = { showGenZMode = false })
+                                        8 -> CustomizeAppScreen(onBack = { showCustomizeApp = false })
+                                        9 -> TermsScreen(onBack = { showTerms = false })
+                                        10 -> PrivacyScreen(onBack = { showPrivacy = false })
+                                    }
                                 }
                             }
                         }
@@ -379,26 +519,13 @@ fun MainAppScaffold() {
                 }
             }
         }
-    }
+    } // CompositionLocalProvider
 }
 
-// ---------- Bottom navigation (SyncSkill-style) ----------
-// Selected tab: a highlight pill spreads out behind the icon, the icon pops (1.0 → 1.10 → 1.0),
-// the filled icon replaces the outlined one and the label turns bold. Colors match SyncSkill. Every tile also squishes to
-// 90% while pressed. Haptics still come from selectTab() in MainAppScaffold.
-private val NavEase = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1.0f)
-
-// Same palette as SyncSkill's AppColors (surfaceCard, surfaceStroke, navActive, navInactive, navHighlight)
-private val NavBarBgLight = Color(0xFFFFFFFF)
-private val NavBarBgDark = Color(0xFF161616)
-private val NavStrokeLight = Color(0xFFE8EAEE)
-private val NavStrokeDark = Color(0xFF2C2C2C)
-private val NavActiveLight = Color(0xFF111111)
-private val NavActiveDark = Color(0xFF2FBF71)      // emerald
-private val NavInactiveLight = Color(0xFF757575)
-private val NavInactiveDark = Color(0xFF9E9E9E)
-private val NavHighlightLight = Color(0xFFD8FDD2)  // mint pill
-private val NavHighlightDark = Color(0xFF1B3D2F)
+// ---------- Bottom navigation ----------
+// Material 3 Expressive ShortNavigationBar. Selected pill, icon and label colors come from the
+// theme (secondaryContainer / onSecondaryContainer), so light and dark need no special-casing,
+// and the label font comes from Typography (Lexend).
 
 private data class NavTab(
     val label: String,
@@ -413,152 +540,29 @@ private val navTabs = listOf(
     NavTab("Settings", Icons.Outlined.Settings, Icons.Default.Settings),
 )
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AppBottomNavBar(
     currentIndex: Int,
     onTap: (Int) -> Unit,
 ) {
-    val isDark = isSystemInDarkTheme()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(if (isDark) NavBarBgDark else NavBarBgLight)
-            .navigationBarsPadding()
+    ShortNavigationBar(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
     ) {
-        HorizontalDivider(
-            thickness = 1.dp,
-            color = if (isDark) NavStrokeDark else NavStrokeLight,
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-        ) {
-            navTabs.forEachIndexed { i, tab ->
-                Box(modifier = Modifier.weight(1f)) {
-                    NavTabTile(
-                        tab = tab,
-                        isSelected = currentIndex == i,
-                        onTap = { onTap(i) },
+        navTabs.forEachIndexed { i, tab ->
+            val selected = currentIndex == i
+            ShortNavigationBarItem(
+                selected = selected,
+                onClick = { onTap(i) },
+                icon = {
+                    Icon(
+                        imageVector = if (selected) tab.selectedIcon else tab.icon,
+                        contentDescription = null,   // the label is the accessible name
                     )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NavTabTile(
-    tab: NavTab,
-    isSelected: Boolean,
-    onTap: () -> Unit,
-) {
-    val isDark = isSystemInDarkTheme()
-    val press = remember { Animatable(1f) }
-    val spread = remember { Animatable(if (isSelected) 1f else 0f) }
-    val pop = remember { Animatable(1f) }
-
-    var prevSelected by remember { mutableStateOf(isSelected) }
-    LaunchedEffect(isSelected) {
-        if (isSelected != prevSelected) {
-            if (isSelected) {
-                coroutineScope {
-                    launch {
-                        spread.snapTo(0f)
-                        spread.animateTo(1f, tween(260, easing = NavEase))
-                    }
-                    launch {
-                        pop.snapTo(1f)
-                        pop.animateTo(1.10f, tween(192, easing = NavEase))
-                        pop.animateTo(1.0f, tween(288, easing = NavEase))
-                    }
-                }
-            } else {
-                spread.snapTo(0f)
-                pop.snapTo(1f)
-            }
-            prevSelected = isSelected
-        }
-    }
-
-    val activeColor = if (isDark) NavActiveDark else NavActiveLight
-    val inactiveColor = if (isDark) NavInactiveDark else NavInactiveLight
-    val highlightColor = if (isDark) NavHighlightDark else NavHighlightLight
-    val scope = rememberCoroutineScope()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                role = Role.Tab
-                this.selected = isSelected
-                onClick { onTap(); true }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        scope.launch { press.animateTo(0.90f, tween(100, easing = NavEase)) }
-                        val released = tryAwaitRelease()
-                        scope.launch { press.animateTo(1f, tween(250, easing = NavEase)) }
-                        if (released) onTap()
-                    }
-                )
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        val padH = if (isSelected) (2f + (20f - 2f) * spread.value).dp else 0.dp
-        val iconScale = if (isSelected) pop.value else 1f
-        val pillShape = RoundedCornerShape(16.dp)
-
-        Box(
-            modifier = Modifier
-                .graphicsLayer { scaleX = press.value; scaleY = press.value }
-                .then(
-                    if (isSelected) Modifier.shadow(
-                        elevation = 6.dp,
-                        shape = pillShape,
-                        ambientColor = highlightColor.copy(alpha = if (isDark) 0.35f else 0.45f),
-                        spotColor = highlightColor.copy(alpha = if (isDark) 0.35f else 0.45f),
-                    ) else Modifier
-                )
-                .background(if (isSelected) highlightColor else Color.Transparent, pillShape)
-                .padding(horizontal = padH, vertical = 3.dp),
-        ) {
-            Icon(
-                imageVector = if (isSelected) tab.selectedIcon else tab.icon,
-                contentDescription = null,   // the label below is the accessible name
-                tint = if (isSelected) activeColor else inactiveColor,
-                modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer { scaleX = iconScale; scaleY = iconScale },
+                },
+                label = { Text(text = tab.label, maxLines = 1) },
             )
         }
-
-        Spacer(Modifier.height(5.dp))
-
-        val spacing by animateFloatAsState(
-            targetValue = if (isSelected) -0.2f else 0f,
-            animationSpec = tween(180, easing = NavEase),
-            label = "navLetterSpacing",
-        )
-        val textColor by animateColorAsState(
-            targetValue = if (isSelected) activeColor else inactiveColor,
-            animationSpec = tween(180, easing = NavEase),
-            label = "navTextColor",
-        )
-        Text(
-            text = tab.label,
-            style = TextStyle(
-                fontFamily = Lexend,
-                fontSize = 12.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                color = textColor,
-                letterSpacing = spacing.sp,
-            ),
-            maxLines = 1,
-        )
     }
 }
 

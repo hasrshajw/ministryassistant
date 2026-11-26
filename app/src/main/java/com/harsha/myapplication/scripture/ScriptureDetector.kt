@@ -1,9 +1,16 @@
 package com.harsha.myapplication.scripture
 
 /**
- * Improved scripture detector.
- * Supports common English abbreviations, Telugu full names + short forms,
- * and any book names that come from an imported JWPUB (Hindi, Tamil, etc.).
+ * Scripture detector.
+ *
+ * 1. Exact pass  - English abbreviations, Telugu names + short forms and every name of an imported
+ *                  Bible (JWPUB: Hindi, Tamil, ...). Fast regex, behaves exactly as before.
+ * 2. Smart pass  - for what the exact pass did not understand, [BookMatcher] reads the words in
+ *                  front of a chapter:verse and works out which book was meant, even when it is
+ *                  misspelled or romanized ("Adikandam 1:1", "prasanki 3:4", "modati samuyelu 1:1").
+ *                  Each such reference carries a confidence and the closest alternatives.
+ *
+ * While typing, [suggestAt] / [suggestBooks] give the top books with scores ("kirt" -> Psalms).
  */
 object ScriptureDetector {
 
@@ -147,11 +154,22 @@ object ScriptureDetector {
         "Revelation" to listOf("ప్రకటన గ్రంథము", "ప్రకటన గ్రంథం", "ప్రకటన", "ప్రక")
     )
 
+    // "1 John" -> also "1st John", "First John"; "2 Sam" -> "2nd Sam", "Second Sam" (English forms only).
+    private val numberedAlias = Regex("""^([123]) (\p{L}+)$""")
+    private val ordinalWords = mapOf(
+        '1' to listOf("1st", "First"), '2' to listOf("2nd", "Second"), '3' to listOf("3rd", "Third")
+    )
+
+    private fun ordinalAliases(aliases: List<String>): List<String> = aliases.flatMap { alias ->
+        val m = numberedAlias.find(alias) ?: return@flatMap emptyList()
+        ordinalWords.getValue(m.groupValues[1][0]).map { "$it ${m.groupValues[2]}" }
+    }
+
     // Runtime map: English + Telugu, extended when another Bible is imported.
     // Only touched inside synchronized(this); readers use the immutable [snapshot] below.
     private val bookAliases: MutableMap<String, MutableList<String>> =
         baseBookAliases.mapValues { (book, aliases) ->
-            (aliases + (teluguAliases[book] ?: emptyList())).distinct().toMutableList()
+            (aliases + ordinalAliases(aliases) + (teluguAliases[book] ?: emptyList())).distinct().toMutableList()
         }.toMutableMap()
 
     /**
@@ -201,10 +219,60 @@ object ScriptureDetector {
 
     // One more passage after the first: ",7"  ",3:7"  ";3:7-9". A bare 1-3 followed by a word is
     // treated as the next book's number ("Genesis 1:1, 2 Kings 3:4"), so it is not swallowed.
-    private const val TAIL_TOKEN =
-        """\s*[,;]\s*(?![1-3](?!\d)\s*\p{L})\d{1,3}(?!\d)(?:\s*[:：]\s*\d{1,3}(?!\d))?(?:\s*[-–—]\s*\d{1,3}(?!\d))?"""
+    //
+    // Chapter/verse separator: a colon (spaces allowed: "3 : 16") OR a full stop with NO spaces
+    // ("3.16"). A full stop with spaces is a sentence end ("... chapter 3. 16 people came").
+    // Every such reference is stored as plain numbers, so it is shown / keyed with a colon.
+    private const val SEP = """(?:\s*[:：]\s*|\.)"""
 
-    private val tailRegex = Regex("""[,;]\s*(\d{1,3})(?:\s*[:：]\s*(\d{1,3}))?(?:\s*[-–—]\s*(\d{1,3}))?""")
+    // Exact pass only (the book name is certain there): "John 3 verse 16", "John 3 v. 16", "John 3v16",
+    // "John chapter 3, verse 16" as well as the colon / dot forms.
+    private const val VERSE_WORD = """\s*,?\s*(?:(?:verses?|vss?|ver)\.?\s*|vv?\.\s*|vv?(?=\d))"""
+    private const val SEP_LONG = """(?:\s*[:：]\s*|\.|$VERSE_WORD)"""
+    private const val CHAPTER_WORD = """(?:(?:chapter|chap|ch)\.?\s*)?"""
+
+    // List connector: "," ";" or "&" / "and" (the latter two only when the number after them is not
+    // followed by a word, so "John 3:16 and 17 people came" is NOT read as verse 17).
+    private const val LIST_JOIN =
+        """(?:[,;]|(?:&|(?i:and))(?=\s*\d{1,3}(?:[:：.\-–—,;\s]*\d{1,3})*(?![\p{L}\d]|\s+\p{L})))"""
+
+    // Not a reference when the verse is directly followed by ".digit" ("Mark 2.5.1", a version number).
+    private const val END_GUARD = """(?![\p{L}\p{M}\p{N}]|\.\d)"""
+
+    private const val TAIL_TOKEN =
+        """\s*$LIST_JOIN\s*(?![1-3](?!\d)\s*\p{L})\d{1,3}(?!\d)(?:$SEP\d{1,3}(?!\d))?(?:\s*[-–—]\s*\d{1,3}(?!\d))?"""
+
+    private val tailRegex = Regex("""(?:[,;]|&|(?i:and))\s*(\d{1,3})(?:$SEP(\d{1,3}))?(?:\s*[-–—]\s*(\d{1,3}))?""")
+
+    private val dotDigitRegex = Regex("""\d\.\d|(?i:\d\s*,?\s*v)""")
+
+    /** Smart-pass (fuzzy book) matches written with a dot must be at least this sure of the book. */
+    private const val SMART_DOT_MIN_CONFIDENCE = 0.85f
+
+    /** True when chapter and verse were written "3.16" / "3 verse 16" instead of "3:16". */
+    private fun usesDot(text: String, chapterEnd: Int): Boolean {
+        var i = chapterEnd
+        while (i < text.length && text[i].isWhitespace()) i++
+        val c = text.getOrNull(i)
+        return c != ':' && c != '：'
+    }
+
+    /**
+     * "Is 3.14", "am 5.5", "Re 2.0" are decimals in ordinary sentences, so a dot reference with a
+     * very short English book word is only accepted when it is written like an abbreviation
+     * ("Ps 23.1", "Jn 3.16"): 3+ letters, or a capital first letter, or a non-Latin script name.
+     */
+    private fun dotBookAllowed(bookText: String): Boolean {
+        val word = bookText.trim()
+        if (word.any { it.isLetter() && it.code > 0x24F }) return true   // Telugu, Hindi, Tamil ...
+        return word.count { it.isLetter() } >= 3 || word.firstOrNull()?.isUpperCase() == true
+    }
+
+    // chapter:verse on its own. Used by the smart pass, where the book name is not an exact alias.
+    // Group 1 = chapter, 2 = verse, 3 = end verse, 4 = extra passages.
+    private val verseRegex = Regex(
+        """(?<![\p{L}\p{M}\p{N}:：]|\d\.)(\d{1,3})$SEP(\d{1,3})(?!\d)(?:\s*[-–—]\s*(\d{1,3})(?!\d))?((?:$TAIL_TOKEN)*)$END_GUARD"""
+    )
 
     private fun buildSnapshot(): Snapshot {
         val allAliases = bookAliases.values.flatten()
@@ -212,10 +280,11 @@ object ScriptureDetector {
             .joinToString("|") { Regex.escape(it) }
 
         // Lookarounds include \p{M} (combining marks) so Telugu vowel signs are part of a word.
-        // Optional dot allows "ఆది. 1:1" / "Gen. 1:1".
+        // Optional dot allows "ఆది. 1:1" / "Gen. 1:1"; the space is optional too ("John3:16", "Gen.1:1").
+        // Chapter and verse may also be split by a dot: "John 3.16", "Gen. 1.1" (see [SEP]).
         // Group 1 = book, 2 = chapter, 3 = verse, 4 = end verse, 5 = extra passages ("1:1-5,7,3:7").
         val pattern = Regex(
-            """(?<![\p{L}\p{M}\p{N}])($allAliases)\.?\s+(\d{1,3})\s*[:：]\s*(\d{1,3})(?!\d)(?:\s*[-–—]\s*(\d{1,3})(?!\d))?((?:$TAIL_TOKEN)*)(?![\p{L}\p{M}\p{N}])""",
+            """(?<![\p{L}\p{M}\p{N}])($allAliases)\.?\s*$CHAPTER_WORD(\d{1,3})$SEP_LONG(\d{1,3})(?!\d)(?:\s*[-–—]\s*(\d{1,3})(?!\d))?((?:$TAIL_TOKEN)*)$END_GUARD""",
             RegexOption.IGNORE_CASE
         )
 
@@ -224,51 +293,113 @@ object ScriptureDetector {
         for ((book, aliases) in bookAliases) {
             for (alias in aliases) lookup.putIfAbsent(alias.lowercase(), book)
         }
+
+        // The fuzzy matcher learns every name too (English, Telugu script, imported Bibles).
+        BookMatcher.setAliases(bookAliases.mapValues { it.value.toList() })
         return Snapshot(pattern, lookup)
     }
 
+    /** Builds a reference, expanding ",7" / ",3:7" tails into [ScriptureReference.more]. */
+    private fun buildReference(
+        book: String, chapter: Int, verse: Int, endVerse: Int?, tail: String,
+        raw: String, start: Int, end: Int,
+        confidence: Float = 1f, alternatives: List<BookMatch> = emptyList()
+    ): ScriptureReference {
+        // Extra passages: "7" stays in the current chapter, "3:7" switches chapter.
+        val more = mutableListOf<ScriptureReference>()
+        var currentChapter = chapter
+        if (tail.isNotEmpty()) {
+            for (t in tailRegex.findAll(tail)) {
+                val first = t.groupValues[1].toIntOrNull() ?: continue
+                val afterColon = t.groupValues[2].toIntOrNull()
+                val last = t.groupValues[3].toIntOrNull()
+                val text = t.value.trim(' ', ',', ';')
+                if (afterColon != null) {
+                    currentChapter = first
+                    more += ScriptureReference(book, currentChapter, afterColon, last, rawText = text)
+                } else {
+                    more += ScriptureReference(book, currentChapter, first, last, rawText = text)
+                }
+            }
+        }
+        return ScriptureReference(
+            book = book, chapter = chapter, verse = verse, endVerse = endVerse,
+            rawText = raw, startIndex = start, endIndex = end, more = more,
+            confidence = confidence, alternatives = alternatives
+        )
+    }
+
     fun extractReferences(text: String): List<ScriptureReference> {
-        // Every reference contains a chapter:verse colon. Plain text without one (the common case
-        // while typing a note) skips the large alias regex completely.
-        if (text.indexOf(':') < 0 && text.indexOf('：') < 0) return emptyList()
+        // Every reference contains a chapter:verse colon or a digit.digit dot. Plain text without
+        // either (the common case while typing a note) skips the large alias regex completely.
+        if (text.indexOf(':') < 0 && text.indexOf('：') < 0 && !dotDigitRegex.containsMatchIn(text)) return emptyList()
 
         val snap = snapshot
-        return snap.pattern.findAll(text).mapNotNull { match ->
-            val rawBook = match.groupValues[1].trim()
+        val exact = snap.pattern.findAll(text).mapNotNull { match ->
             val chapter = match.groupValues[2].toIntOrNull() ?: return@mapNotNull null
             val verse = match.groupValues[3].toIntOrNull() ?: return@mapNotNull null
             val endVerse = match.groupValues.getOrNull(4)?.toIntOrNull()
-            val tail = match.groupValues.getOrNull(5).orEmpty()
-
-            val book = snap.aliasToBook[rawBook.lowercase()] ?: return@mapNotNull null
-
-            // Extra passages: "7" stays in the current chapter, "3:7" switches chapter.
-            val more = mutableListOf<ScriptureReference>()
-            var currentChapter = chapter
-            if (tail.isNotEmpty()) {
-                for (t in tailRegex.findAll(tail)) {
-                    val first = t.groupValues[1].toIntOrNull() ?: continue
-                    val afterColon = t.groupValues[2].toIntOrNull()
-                    val end = t.groupValues[3].toIntOrNull()
-                    if (afterColon != null) {
-                        currentChapter = first
-                        more += ScriptureReference(book, currentChapter, afterColon, end, rawText = t.value.trim(' ', ',', ';'))
-                    } else {
-                        more += ScriptureReference(book, currentChapter, first, end, rawText = t.value.trim(' ', ',', ';'))
-                    }
-                }
-            }
-
-            ScriptureReference(
-                book = book,
-                chapter = chapter,
-                verse = verse,
-                endVerse = endVerse,
-                rawText = match.value,
-                startIndex = match.range.first,
-                endIndex = match.range.last + 1,
-                more = more
+            val book = snap.aliasToBook[match.groupValues[1].trim().lowercase()] ?: return@mapNotNull null
+            if (usesDot(text, match.groups[2]!!.range.last + 1) &&
+                (chapter < 1 || verse < 1 || !dotBookAllowed(match.groupValues[1]))
+            ) return@mapNotNull null
+            buildReference(
+                book, chapter, verse, endVerse, match.groupValues.getOrNull(5).orEmpty(),
+                match.value, match.range.first, match.range.last + 1
             )
         }.toList()
+
+        val smart = smartPass(text, exact)
+        return if (smart.isEmpty()) exact else (exact + smart).sortedBy { it.startIndex }
     }
+
+    /**
+     * Finds chapter:verse spots the exact pass did not claim and asks [BookMatcher] which book
+     * the words in front of them name. Books already found in the note break ties
+     * (a note about Psalms leans to Psalms for "kirt").
+     */
+    private fun smartPass(text: String, exact: List<ScriptureReference>): List<ScriptureReference> {
+        val out = mutableListOf<ScriptureReference>()
+        val context = HashSet<String>()
+        exact.mapTo(context) { it.book }
+        var lastEnd = -1
+
+        for (m in verseRegex.findAll(text)) {
+            val vStart = m.range.first
+            val vEnd = m.range.last + 1
+            if (exact.any { vStart < it.endIndex && vEnd > it.startIndex }) continue
+
+            val lineStart = text.lastIndexOf('\n', vStart - 1) + 1
+            val hit = BookMatcher.resolveBefore(text, vStart, lineStart, context) ?: continue
+            if (hit.start < lastEnd || exact.any { hit.start < it.endIndex && vEnd > it.startIndex }) continue
+
+            val chapter = m.groupValues[1].toIntOrNull() ?: continue
+            val verse = m.groupValues[2].toIntOrNull() ?: continue
+            if (usesDot(text, m.groups[1]!!.range.last + 1) &&
+                (chapter < 1 || verse < 1 || hit.match.score < SMART_DOT_MIN_CONFIDENCE)
+            ) continue
+            val ref = buildReference(
+                hit.match.book, chapter, verse, m.groupValues[3].toIntOrNull(), m.groupValues[4],
+                text.substring(hit.start, vEnd), hit.start, vEnd,
+                confidence = hit.match.score, alternatives = hit.alternatives
+            )
+            out += ref
+            context += ref.book
+            lastEnd = vEnd
+        }
+        return out
+    }
+
+    // ---------------------------------------------------------------- typing helpers
+
+    /** Top books (default 3) for what the user has typed so far, each with a confidence score. */
+    fun suggestBooks(query: String, limit: Int = 3, context: Collection<String> = emptyList()): List<BookMatch> =
+        BookMatcher.suggest(query, limit, context)
+
+    /** Suggestions for the word(s) right before [caret], with the text range they would replace. */
+    fun suggestAt(text: String, caret: Int, limit: Int = 3, context: Collection<String> = emptyList()): BookSuggestions? =
+        BookMatcher.suggestAt(text, caret, limit, context)
+
+    /** Call when the user accepts a suggestion so the same spelling resolves faster next time. */
+    fun recordChoice(typed: String, book: String) = BookMatcher.learn(typed, book)
 }
