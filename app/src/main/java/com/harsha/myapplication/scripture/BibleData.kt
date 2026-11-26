@@ -190,7 +190,7 @@ object BibleData {
         val app = appContext
         if (app != null) ioScope.launch {
             try {
-                app.assets.open("telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
+                app.assets.open("scripture/telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
             } catch (e: Exception) {
                 Log.w(TAG, "Book name variants not loaded", e)
             }

@@ -148,7 +148,7 @@ object BookMatcher {
     /**
      * Loads telugu_bible_name_variants_300.json (66 keys in Bible order, 300 spellings each).
      * Call once from a background thread, e.g. BibleData.init:
-     *   context.assets.open("telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
+     *   context.assets.open("scripture/telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
      */
     fun loadVariants(stream: InputStream) {
         val parsed = parseVariantLists(stream.readBytes().toString(Charsets.UTF_8))
