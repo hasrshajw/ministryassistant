@@ -42,6 +42,9 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.rememberNavigationSuiteScaffoldState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -441,47 +444,64 @@ fun MainAppScaffold() {
         }
     }
 
+    val navSuiteState = rememberNavigationSuiteScaffoldState()
+
+    // Drive NavigationSuite visibility from the same conditions that previously controlled the
+    // ShortNavigationBar (sub-screens, notes drawer, full-screen editors).
+    val navVisible = subScreen == null && !notesDrawerOpen && !bottomBarHidden
+    LaunchedEffect(navVisible) {
+        if (navVisible) navSuiteState.show() else navSuiteState.hide()
+    }
+
     CompositionLocalProvider(LocalSetBottomBarHidden provides { bottomBarHidden = it }) {
-        Scaffold(
+        NavigationSuiteScaffold(
             modifier = Modifier.fillMaxSize(),
-            bottomBar = {
-                // Bottom bar rises with a spring as a sub-screen exits, drops the same way
-                // as one opens. Was using default AnimatedVisibility tween (240ms linear-ish).
-                AnimatedVisibility(
-                    visible = subScreen == null && !notesDrawerOpen && !bottomBarHidden,
-                    enter = slideInVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                        fadeIn(Motion.effectsFast),
-                    exit = slideOutVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                        fadeOut(Motion.effectsFast),
-                ) {
-                    AppBottomNavBar(
-                        currentIndex = selectedScreen,
-                        onTap = { selectTab(it) },
+            state = navSuiteState,
+            navigationSuiteColors = NavigationSuiteDefaults.colors(
+                navigationBarContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+            ),
+            navigationSuiteItems = {
+                navTabs.forEachIndexed { i, tab ->
+                    val selected = selectedScreen == i
+                    item(
+                        selected = selected,
+                        onClick = { selectTab(i) },
+                        icon = {
+                            Icon(
+                                imageVector = if (selected) tab.selectedIcon else tab.icon,
+                                contentDescription = null,
+                            )
+                        },
+                        label = { Text(text = tab.label, maxLines = 1) },
                     )
                 }
-            }
-        ) { scaffoldPadding ->
-            // While the Notes menu is open the bottom bar is gone, so the content grows down to the
-            // system navigation inset; the padding springs in step with the bar sliding away / back.
+            },
+        ) {
+            // Content area. NavigationSuiteScaffold already accounts for the navigation component
+            // (bar / rail / drawer) in the available space. We still apply system bar insets and
+            // the previous animated bottom padding behaviour so existing screens keep working.
             val layoutDirection = LocalLayoutDirection.current
             val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            // When the suite is hidden we only need the system navigation inset; when visible the
+            // suite itself has already reserved its own space, so we use a modest bottom padding.
+            val contentBottom = if (navVisible) 0.dp else navInset
             val bottomPadding by animateDpAsState(
-                targetValue = if (notesDrawerOpen || bottomBarHidden) navInset else scaffoldPadding.calculateBottomPadding(),
+                targetValue = contentBottom,
                 animationSpec = Motion.spatialDefaultDp,
                 label = "contentBottomPadding",
             )
-            // A spring animation can overshoot below its target (e.g. toward 0.dp when the system
-            // navigation inset is 0), and Compose throws "Padding must be non-negative" on that.
+            // Status bar + horizontal system insets. Bottom is handled by the animated value above
+            // (0 when the suite is visible, system nav inset when hidden).
+            val statusBarPadding = WindowInsets.statusBars.asPaddingValues()
             val innerPadding = PaddingValues(
-                start = scaffoldPadding.calculateStartPadding(layoutDirection).coerceAtLeast(0.dp),
-                top = scaffoldPadding.calculateTopPadding().coerceAtLeast(0.dp),
-                end = scaffoldPadding.calculateEndPadding(layoutDirection).coerceAtLeast(0.dp),
+                start = statusBarPadding.calculateStartPadding(layoutDirection).coerceAtLeast(0.dp),
+                top = statusBarPadding.calculateTopPadding().coerceAtLeast(0.dp),
+                end = statusBarPadding.calculateEndPadding(layoutDirection).coerceAtLeast(0.dp),
                 bottom = bottomPadding.coerceAtLeast(0.dp),
             )
-            // The Scaffold already reserves the status bar and the bottom bar (which handles the
-            // system navigation inset itself). Each screen applies this modifier itself, which pads it
-            // and marks those insets as consumed so screens that call navigationBarsPadding() /
-            // statusBarsPadding() don't add the same space a second time.
+            // Each screen applies this modifier itself, which pads it and marks those insets as
+            // consumed so screens that call navigationBarsPadding() / statusBarsPadding() don't
+            // add the same space a second time.
             // The Notes tab is the exception: it receives the padding as `contentPadding` and paints
             // its own background edge-to-edge, so the status bar and navigation bar areas always match
             // the side menu / notes colors.
@@ -490,14 +510,12 @@ fun MainAppScaffold() {
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
 
-            // Sub-screens (Bibles, Daily text, Note editor, About) hide the bottom bar, so they get
-            // a FIXED bottom padding = the system navigation inset. It is never animated: using the
-            // animated `innerPadding` made anything pinned to the bottom of a sub-screen start at the
-            // bottom bar's height and slide down while the bar left.
+            // Sub-screens hide the navigation suite, so they get a FIXED bottom padding = the
+            // system navigation inset. It is never animated.
             val subScreenPadding = PaddingValues(
-                start = scaffoldPadding.calculateStartPadding(layoutDirection),
-                top = scaffoldPadding.calculateTopPadding(),
-                end = scaffoldPadding.calculateEndPadding(layoutDirection),
+                start = statusBarPadding.calculateStartPadding(layoutDirection),
+                top = statusBarPadding.calculateTopPadding(),
+                end = statusBarPadding.calculateEndPadding(layoutDirection),
                 bottom = navInset,
             )
             val subScreenInsets = Modifier
@@ -652,10 +670,9 @@ fun MainAppScaffold() {
     } // CompositionLocalProvider
 }
 
-// ---------- Bottom navigation ----------
-// Material 3 Expressive ShortNavigationBar. Selected pill, icon and label colors come from the
-// theme (secondaryContainer / onSecondaryContainer), so light and dark need no special-casing,
-// and the label font comes from Typography (Lexend).
+// ---------- Adaptive navigation destinations ----------
+// Shared by NavigationSuiteScaffold. On compact windows the suite renders a ShortNavigationBar;
+// on medium/expanded it becomes a NavigationRail (or drawer) automatically.
 
 private data class NavTab(
     val label: String,
@@ -669,32 +686,6 @@ private val navTabs = listOf(
     NavTab("People", Icons.Outlined.People, Icons.Default.People),
     NavTab("Settings", Icons.Outlined.Settings, Icons.Default.Settings),
 )
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun AppBottomNavBar(
-    currentIndex: Int,
-    onTap: (Int) -> Unit,
-) {
-    ShortNavigationBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-    ) {
-        navTabs.forEachIndexed { i, tab ->
-            val selected = currentIndex == i
-            ShortNavigationBarItem(
-                selected = selected,
-                onClick = { onTap(i) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) tab.selectedIcon else tab.icon,
-                        contentDescription = null,   // the label is the accessible name
-                    )
-                },
-                label = { Text(text = tab.label, maxLines = 1) },
-            )
-        }
-    }
-}
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
