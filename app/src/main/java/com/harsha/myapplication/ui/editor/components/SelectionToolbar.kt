@@ -71,6 +71,12 @@ import kotlinx.coroutines.CompletableDeferred
 
 internal enum class ToolbarMode { Main, Colors, More }
 
+// Always-dark toolbar so it stays clearly visible over light and dark note backgrounds.
+private val ToolbarBg = Color(0xFF202124)
+private val ToolbarFg = Color(0xFFF1F3F4)
+private val ToolbarChecked = Color.White.copy(alpha = 0.20f)
+private val ToolbarAccent = Color(0xFF8AB4F8)
+
 /**
  * Plugged into the text field through [LocalTextContextMenuToolbarProvider] (Compose Foundation 1.9+;
  * the old LocalTextToolbar is no longer used by text fields). While the field wants a menu,
@@ -123,7 +129,7 @@ internal class SelectionToolbarState : TextContextMenuProvider {
 }
 
 /**
- * Material 3 Expressive selection toolbar built on [HorizontalFloatingToolbar].
+ * Dark pill selection toolbar (fixed-size [Surface] inside a [Popup]).
  *
  * Main row: overlapping highlight swatches (tap = show every colour, all other buttons disappear),
  * bold, underline, copy, verse lookup (only when the selection holds a scripture) and a "more"
@@ -207,18 +213,19 @@ internal fun SelectionToolbar(
     }
 
     // focusable = false keeps the keyboard and the selection exactly as they are while a button is tapped.
-    // HorizontalFloatingToolbar supplies the official M3 Expressive floating container
-    // (shape, elevation, colour tokens, morph behaviour). We keep the Popup only for
-    // positioning relative to the selection handles — the toolbar itself must not own layout.
     Popup(
         popupPositionProvider = position,
         properties = PopupProperties(focusable = false, clippingEnabled = false)
     ) {
-        HorizontalFloatingToolbar(
+        // Fixed-size dark pill. (HorizontalFloatingToolbar stretched to a huge pale oval inside the
+        // Popup, because a Popup gives its content the whole window as max size.)
+        Surface(
             modifier = Modifier.widthIn(max = maxToolbarWidth),
-            expanded = true,
-            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+            shape = RoundedCornerShape(28.dp),
+            color = ToolbarBg,
+            contentColor = ToolbarFg,
+            tonalElevation = 0.dp,
+            shadowElevation = 10.dp
         ) {
             AnimatedContent(
                 targetState = state.mode,
@@ -231,6 +238,7 @@ internal fun SelectionToolbar(
                 val selectAll = selectAllAction
                 val hasSelection = copy != null || cut != null
                 Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     when {
@@ -259,13 +267,13 @@ internal fun SelectionToolbar(
                                     modifier = Modifier
                                         .size(swatch - 12.dp)
                                         .clip(CircleShape)
-                                        .border(1.dp, colors.outline.copy(alpha = 0.6f), CircleShape),
+                                        .border(1.dp, ToolbarFg.copy(alpha = 0.6f), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         Icons.Default.FormatColorReset,
                                         contentDescription = null,
-                                        tint = if (highlightArg == null) colors.primary else colors.onSurfaceVariant,
+                                        tint = if (highlightArg == null) ToolbarAccent else ToolbarFg,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -289,7 +297,7 @@ internal fun SelectionToolbar(
                                             .size(swatch - 12.dp)
                                             .clip(CircleShape)
                                             .background(c)
-                                            .border(1.dp, colors.outline.copy(alpha = 0.4f), CircleShape),
+                                            .border(1.dp, ToolbarFg.copy(alpha = 0.4f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (selected) {
@@ -370,7 +378,7 @@ internal fun ToolbarButton(
         IconButton(
             onClick = onClick,
             modifier = Modifier.size(size),
-            colors = IconButtonDefaults.iconButtonColors(contentColor = colors.onSurface),
+            colors = IconButtonDefaults.iconButtonColors(contentColor = ToolbarFg),
             shapes = IconButtonDefaults.shapes()
         ) { Icon(icon, contentDescription = label) }
     } else {
@@ -379,9 +387,9 @@ internal fun ToolbarButton(
             onCheckedChange = { onClick() },
             modifier = Modifier.size(size),
             colors = IconButtonDefaults.iconToggleButtonColors(
-                contentColor = colors.onSurface,
-                checkedContainerColor = colors.secondaryContainer,
-                checkedContentColor = colors.onSecondaryContainer
+                contentColor = ToolbarFg,
+                checkedContainerColor = ToolbarChecked,
+                checkedContentColor = ToolbarAccent
             ),
             shapes = IconButtonDefaults.toggleableShapes()
         ) { Icon(icon, contentDescription = label) }
