@@ -203,7 +203,8 @@ fun NotesScreen(
 
     // Load the saved folders (and make sure the notes store is open). Both calls are no-ops after the first.
     val appContext = LocalContext.current
-    remember { NotesRepository.init(appContext); FolderRepository.init(appContext) }
+    // remember must return a value (not Unit); the init calls are idempotent.
+    remember(appContext) { NotesRepository.init(appContext); FolderRepository.init(appContext); true }
     val savedFolders = FolderRepository.folders
 
     // Derived data is rebuilt only when the notes change, not on every keystroke / recomposition.
