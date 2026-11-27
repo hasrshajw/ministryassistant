@@ -121,9 +121,14 @@ internal class SelectionToolbarState : TextContextMenuProvider {
 }
 
 /**
- * Material 3 selection toolbar. Main row: overlapping highlight swatches (tap = show every colour,
- * all other buttons disappear), bold, underline, copy, verse lookup (only when the selection holds a
- * scripture) and a "more" button. With only a caret (no selection) it offers paste / select all.
+ * Material 3 Expressive selection toolbar built on [HorizontalFloatingToolbar].
+ *
+ * Main row: overlapping highlight swatches (tap = show every colour, all other buttons disappear),
+ * bold, underline, copy, verse lookup (only when the selection holds a scripture) and a "more"
+ * button. With only a caret (no selection) it offers paste / select all.
+ *
+ * The [Popup] is retained solely for positioning relative to the selection handles; the visual
+ * container, elevation, shape and colour tokens come from the official floating toolbar.
  */
 @Composable
 internal fun SelectionToolbar(
@@ -193,16 +198,18 @@ internal fun SelectionToolbar(
         }
     }
 
-    // focusable = false keeps the keyboard and the selection exactly as they are while a button is tapped
+    // focusable = false keeps the keyboard and the selection exactly as they are while a button is tapped.
+    // HorizontalFloatingToolbar supplies the official M3 Expressive floating container
+    // (shape, elevation, colour tokens, morph behaviour). We keep the Popup only for
+    // positioning relative to the selection handles — the toolbar itself must not own layout.
     Popup(
         popupPositionProvider = position,
         properties = PopupProperties(focusable = false, clippingEnabled = false)
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = colors.surfaceContainerHigh,
-            tonalElevation = 3.dp,
-            shadowElevation = 6.dp
+        HorizontalFloatingToolbar(
+            expanded = true,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
         ) {
             AnimatedContent(
                 targetState = state.mode,
@@ -215,7 +222,6 @@ internal fun SelectionToolbar(
                 val selectAll = selectAllAction
                 val hasSelection = copy != null || cut != null
                 Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     when {
