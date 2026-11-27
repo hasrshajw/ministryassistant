@@ -1,5 +1,6 @@
 package com.harsha.myapplication
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.BackEventCompat
@@ -279,6 +280,12 @@ fun MainAppScaffold() {
         showNotifications -> SubScreen.Notifications
         showBackup -> SubScreen.Backup
         else -> null
+    }
+
+    // Tell Firebase which screen the user is on, so every crash / handled error shows where it happened.
+    LaunchedEffect(selectedScreen, subScreen) {
+        val tab = when (selectedScreen) { 0 -> "Home"; 1 -> "Notes"; 2 -> "People"; 3 -> "Settings"; else -> "Tab$selectedScreen" }
+        CrashReporter.setScreen(if (subScreen != null) "$tab > ${subScreen.name}" else tab)
     }
 
     // ---- Predictive back, driven in-app ----

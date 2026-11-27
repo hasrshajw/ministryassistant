@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.editor.components
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
@@ -42,7 +43,7 @@ internal fun FindBar(
 ) {
     val colors = MaterialTheme.colorScheme
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { CrashReporter.attempt("FindBar") { focus.requestFocus() } }
     Column(
         modifier = Modifier
             .fillMaxWidth()

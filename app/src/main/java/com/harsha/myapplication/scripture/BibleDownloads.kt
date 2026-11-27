@@ -1,5 +1,6 @@
 package com.harsha.myapplication.scripture
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -114,7 +115,7 @@ object BibleDownloads {
             ContextCompat.startForegroundService(app, Intent(app, BibleDownloadService::class.java))
         } catch (e: Exception) {
             // Download still runs (process scoped); it just is not protected while in the background.
-            Log.w(TAG, "Could not start foreground service", e)
+            CrashReporter.record(TAG, e, "Could not start foreground service")
         }
     }
 
@@ -151,7 +152,7 @@ object BibleDownloads {
             states.remove(source.id)
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Download failed for ${source.id}", e)
+            CrashReporter.record(TAG, e, "Download failed for ${source.id}")
             fail(app, source, e.message ?: "Download failed")
         } finally {
             file.delete()
@@ -259,7 +260,8 @@ object BibleDownloads {
         try {
             NotificationManagerCompat.from(app).notify(PROGRESS_NOTIF_ID, progressNotification(app))
         } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS not granted: the download is unaffected.
+            // POST_NOTIFICATIONS not granted (user choice): the download is unaffected.
+            CrashReporter.breadcrumb("BibleDownloads: progress notification not allowed")
         }
     }
 
@@ -276,7 +278,8 @@ object BibleDownloads {
                 .build()
             NotificationManagerCompat.from(app).notify(DONE_NOTIF_BASE + catalog.indexOf(source), n)
         } catch (e: SecurityException) {
-            // notifications not allowed
+            // notifications not allowed (user choice)
+            CrashReporter.breadcrumb("BibleDownloads: completion notification not allowed")
         }
     }
 }

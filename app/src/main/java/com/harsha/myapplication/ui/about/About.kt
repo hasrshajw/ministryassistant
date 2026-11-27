@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.about
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -125,7 +126,7 @@ fun AboutScreen(
     val context = LocalContext.current
 
     fun openUrl(url: String) =
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        CrashReporter.attempt("About") { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 
     fun writeToDeveloper() {
         val intent = Intent(Intent.ACTION_SENDTO).apply {
@@ -133,7 +134,7 @@ fun AboutScreen(
             putExtra(Intent.EXTRA_EMAIL, arrayOf(CONTACT_EMAIL))
             putExtra(Intent.EXTRA_SUBJECT, "Ministry Assistant feedback")
         }
-        runCatching { context.startActivity(intent) }
+        CrashReporter.attempt("About") { context.startActivity(intent) }
     }
 
     Scaffold(
@@ -317,7 +318,7 @@ private fun AppIcon(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.large
     val bitmap = remember {
-        runCatching {
+        CrashReporter.attempt("About") {
             val drawable = context.packageManager.getApplicationIcon(context.packageName)
             val size = 192
             val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

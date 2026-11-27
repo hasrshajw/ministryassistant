@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.settings
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.Intent
 import android.text.format.Formatter
@@ -157,11 +158,14 @@ fun BackupScreen(onBack: () -> Unit) {
                 )
             }
         } catch (e: ApiException) {
+            // 12501 = the user closed the sign-in sheet: not an error.
+            if (e.statusCode != 12501) CrashReporter.record("BackupScreen", e, "Google Sign-In failed (${e.statusCode})")
             BackupRepository.onDriveConnectFailed(
                 if (e.statusCode == 12501) null // user cancelled
                 else (e.message ?: "Google Sign-In failed (${e.statusCode})")
             )
         } catch (e: Exception) {
+            CrashReporter.record("BackupScreen", e)
             BackupRepository.onDriveConnectFailed(e.message ?: "Google Sign-In failed")
         }
     }

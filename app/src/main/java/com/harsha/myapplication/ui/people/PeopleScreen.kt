@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.people
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
@@ -574,7 +575,8 @@ internal fun parseDateOnly(value: String?): Date? {
     if (value.isNullOrEmpty()) return null
     return try {
         dateFormat().apply { isLenient = false }.parse(value)
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        CrashReporter.record("PeopleScreen", e)
         null
     }
 }
@@ -604,7 +606,8 @@ internal fun visitTimeMinutes(record: PersonRecord): Int {
     return try {
         val cal = Calendar.getInstance().apply { time = timeFormat().parse(t)!! }
         cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        CrashReporter.record("PeopleScreen", e)
         Int.MAX_VALUE
     }
 }

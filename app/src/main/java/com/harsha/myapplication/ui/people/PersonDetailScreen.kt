@@ -6,6 +6,7 @@
 )
 package com.harsha.myapplication.ui.people
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -1525,7 +1526,7 @@ private fun PickerCard(
 private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     val utc = remember { dateFormat(utc = true) }
     val state = rememberDatePickerState(
-        initialSelectedDateMillis = remember { runCatching { utc.parse(initial)?.time }.getOrNull() },
+        initialSelectedDateMillis = remember { if (initial.isBlank()) null else CrashReporter.attempt("PersonDetailScreen") { utc.parse(initial)?.time }.getOrNull() },
     )
     DatePickerDialog(
         onDismissRequest = onDismiss,
@@ -1546,7 +1547,12 @@ private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
 private fun TimePickerSheet(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     val fmt = remember { timeFormat() }
     val start = remember {
-        Calendar.getInstance().apply { runCatching { fmt.parse(initial) }.getOrNull()?.let { time = it } }
+        Calendar.getInstance().apply {
+            // An empty initial value (new record) is expected, so it is not reported as a parse failure.
+            initial.takeIf { it.isNotBlank() }
+                ?.let { text -> CrashReporter.attempt("PersonDetailScreen") { fmt.parse(text) }.getOrNull() }
+                ?.let { time = it }
+        }
     }
     val state = rememberTimePickerState(
         initialHour = start.get(Calendar.HOUR_OF_DAY),
@@ -1725,7 +1731,8 @@ private fun normalizePhone(phone: String): String {
 private fun Context.launch(intent: Intent) {
     try {
         startActivity(intent)
-    } catch (_: ActivityNotFoundException) {
+    } catch (e: ActivityNotFoundException) {
+        CrashReporter.record("PersonDetailScreen", e)
         Toast.makeText(this, "No app found to handle this action", Toast.LENGTH_SHORT).show()
     }
 }

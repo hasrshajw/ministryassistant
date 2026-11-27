@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -100,7 +101,8 @@ object NoteImages {
         } catch (e: CancellationException) {
             outFile?.delete()
             throw e
-        } catch (_: Throwable) { // includes OutOfMemoryError on huge pictures
+        } catch (e: Throwable) { // includes OutOfMemoryError on huge pictures
+            CrashReporter.record("NoteImages", e)
             outFile?.delete()
             null
         }
@@ -124,7 +126,8 @@ object NoteImages {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         try {
             BitmapFactory.decodeFile(file.path, o)
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            CrashReporter.record("NoteImages", e)
             return@withContext null
         }
         if (o.outWidth > 0 && o.outHeight > 0) o.outWidth.toFloat() / o.outHeight else null
@@ -142,7 +145,8 @@ object NoteImages {
             newName
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            CrashReporter.record("NoteImages", e)
             null
         }
     }
@@ -161,7 +165,8 @@ object NoteImages {
         if (!file.exists()) return null
         return try {
             BitmapFactory.decodeFile(file.path)
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            CrashReporter.record("NoteImages", e)
             null
         }
     }
@@ -204,7 +209,8 @@ object NoteImages {
                 }
             } ?: 0
         }
-    } catch (_: Throwable) {
+    } catch (e: Throwable) {
+        CrashReporter.record("NoteImages", e)
         0
     }
 }

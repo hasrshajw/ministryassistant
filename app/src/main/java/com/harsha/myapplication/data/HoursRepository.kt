@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +49,8 @@ object HoursRepository {
                     minutes = o.optInt("minutes"),
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            CrashReporter.record("HoursRepository", e)
             emptyList()
         }
     }

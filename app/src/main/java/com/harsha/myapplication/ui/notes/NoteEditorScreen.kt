@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.notes
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -570,7 +571,7 @@ fun NoteEditorView(
     LaunchedEffect(Unit) {
         if (noteId == null && editing && title.isEmpty() && bodyValue.text.isEmpty()) {
             delay(250) // let the screen transition finish before opening the keyboard
-            runCatching { bodyFocus.requestFocus() }
+            CrashReporter.attempt("NoteEditorScreen") { bodyFocus.requestFocus() }
             keyboard?.show()
         }
     }
@@ -580,7 +581,7 @@ fun NoteEditorView(
         if (editing && focusOnEdit) {
             focusOnEdit = false
             delay(60)
-            runCatching { bodyFocus.requestFocus() }
+            CrashReporter.attempt("NoteEditorScreen") { bodyFocus.requestFocus() }
             keyboard?.show()
         }
     }
@@ -588,7 +589,7 @@ fun NoteEditorView(
     fun togglePanel(target: Panel) {
         if (panel == target) {
             panel = Panel.None
-            runCatching { bodyFocus.requestFocus() }
+            CrashReporter.attempt("NoteEditorScreen") { bodyFocus.requestFocus() }
             keyboard?.show()
         } else {
             panel = target
@@ -612,7 +613,7 @@ fun NoteEditorView(
     fun focusBodyAtEnd() {
         panel = Panel.None
         bodyValue = bodyValue.copy(selection = TextRange(bodyValue.text.length))
-        runCatching { bodyFocus.requestFocus() }
+        CrashReporter.attempt("NoteEditorScreen") { bodyFocus.requestFocus() }
         keyboard?.show()
         revealTick++
     }
@@ -958,7 +959,7 @@ fun NoteEditorView(
             putExtra(Intent.EXTRA_SUBJECT, title.trim())
             putExtra(Intent.EXTRA_TEXT, noteAsText())
         }
-        runCatching {
+        CrashReporter.attempt("NoteEditorScreen") {
             context.startActivity(Intent.createChooser(send, "Share note").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
@@ -1355,7 +1356,7 @@ fun NoteEditorView(
         val sl = synced ?: return@LaunchedEffect
         val len = sl.layout.layoutInput.text.length
         val line = sl.layout.getLineForOffset(sl.plan.toShown(m.first).coerceIn(0, len))
-        runCatching {
+        CrashReporter.attempt("NoteEditorScreen") {
             bodyBring.bringIntoView(
                 Rect(0f, sl.layout.getLineTop(line), sl.layout.size.width.toFloat(), sl.layout.getLineBottom(line))
             )
@@ -1374,7 +1375,7 @@ fun NoteEditorView(
                 .coerceIn(0, layout.layoutInput.text.length)
             val r = layout.getCursorRect(shown)
             val pad = with(density) { 32.dp.toPx() }
-            runCatching {
+            CrashReporter.attempt("NoteEditorScreen") {
                 bodyBring.bringIntoView(Rect(r.left, r.top - pad, r.right, r.bottom + pad))
             }
         }
@@ -2144,7 +2145,7 @@ fun NoteEditorView(
             onVersePicked = { reference ->
                 showAddScripture = false
                 insertScripture(reference)
-                runCatching { bodyFocus.requestFocus() }
+                CrashReporter.attempt("NoteEditorScreen") { bodyFocus.requestFocus() }
                 keyboard?.show()
             }
         )

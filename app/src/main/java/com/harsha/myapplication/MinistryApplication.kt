@@ -7,6 +7,7 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.remoteConfigSettings
+import com.harsha.myapplication.telemetry.CrashReporter
 
 class MinistryApplication : Application() {
     override fun onCreate() {
@@ -18,6 +19,9 @@ class MinistryApplication : Application() {
         // Crashlytics: enabled by default in release; keep collection on.
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
 
+        // Every handled ("minor") error in the app is routed through this to Crashlytics non-fatals.
+        CrashReporter.init(this)
+
         // Analytics is automatic once the dependency is present.
         FirebaseAnalytics.getInstance(this)
 
@@ -28,9 +32,13 @@ class MinistryApplication : Application() {
         }
         remoteConfig.setConfigSettingsAsync(configSettings)
         remoteConfig.fetchAndActivate()
+            .addOnFailureListener { CrashReporter.record("RemoteConfig", it, "fetchAndActivate failed") }
 
         // FCM: request token so the device is registered (token available via MessagingService).
         FirebaseMessaging.getInstance().token
-            .addOnCompleteListener { /* token ready when successful */ }
+            .addOnCompleteListener { task ->
+                // Token is ready when successful; a failure means push messages won't arrive.
+                task.exception?.let { CrashReporter.record("FCM", it, "Could not get FCM token") }
+            }
     }
 }

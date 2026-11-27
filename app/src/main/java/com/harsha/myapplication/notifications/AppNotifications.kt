@@ -1,5 +1,6 @@
 package com.harsha.myapplication.notifications
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -42,7 +43,8 @@ object AppNotifications {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             context.startActivity(intent)
-        } catch (_: ActivityNotFoundException) {
+        } catch (e: ActivityNotFoundException) {
+            CrashReporter.record("AppNotifications", e)
             context.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

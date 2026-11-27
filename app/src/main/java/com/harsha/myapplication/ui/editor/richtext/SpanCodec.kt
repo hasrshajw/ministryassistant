@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.editor.richtext
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +39,7 @@ internal fun encodeSpans(spans: List<FormatSpan>): String {
 /** Parses spans defensively: unknown types and out-of-range values are dropped, never crash. */
 internal fun decodeSpans(json: String, textLength: Int): List<FormatSpan> {
     if (json.isBlank()) return emptyList()
-    return runCatching {
+    return CrashReporter.attempt("SpanCodec") {
         val arr = JSONArray(json)
         buildList {
             for (i in 0 until arr.length()) {

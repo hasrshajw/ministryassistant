@@ -3,6 +3,7 @@ package com.harsha.myapplication.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.harsha.myapplication.telemetry.CrashReporter
 
 /**
  * AlarmManager forgets every alarm on reboot, so they are registered again here.
@@ -23,6 +24,9 @@ class BootReceiver : BroadcastReceiver() {
                             context,
                             catchUpMissed = intent.action == Intent.ACTION_BOOT_COMPLETED,
                         )
+                    } catch (e: Throwable) {
+                        // A failed reschedule must not crash the app in the background after boot.
+                        CrashReporter.record("BootReceiver", e, "Failed to reschedule reminders (${intent.action})")
                     } finally {
                         pending.finish()
                     }

@@ -1,5 +1,6 @@
 package com.harsha.myapplication.ui.notes
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -61,7 +62,7 @@ internal fun NewFolderDialog(
 
     LaunchedEffect(Unit) {
         delay(100) // wait for the dialog window before asking for focus
-        runCatching { focus.requestFocus() }
+        CrashReporter.attempt("FolderComponents") { focus.requestFocus() }
     }
 
     Dialog(onDismissRequest = onDismiss) {

@@ -1,5 +1,6 @@
 package com.harsha.myapplication.scripture
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -167,7 +168,7 @@ object JwpubImporter {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Import failed", e)
+            CrashReporter.record(TAG, e, "Import failed")
             ImportResult(false, message = e.message ?: "Unknown error")
         } finally {
             tempDir.deleteRecursively()
@@ -197,7 +198,7 @@ object JwpubImporter {
                     val html = try {
                         decoder.decode(blob)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Decrypt failed for verseId=$verseId", e)
+                        CrashReporter.record(TAG, e, "Decrypt failed for verseId=$verseId")
                         continue
                     }
                     val plain = stripHtml(html)
@@ -362,7 +363,7 @@ object JwpubImporter {
             var decrypted = try {
                 cipher.doFinal(blob)
             } catch (e: Exception) {
-                resetCipher()               // a failed doFinal must not poison the next verse
+                resetCipher()               // a failed doFinal must not poison the next verse (caller reports it)
                 throw e
             }
 
@@ -380,7 +381,10 @@ object JwpubImporter {
 
             return try {
                 inflate(zlib, decrypted)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // Expected: not every verse is zlib-wrapped, so fall back to raw deflate.
+                // (Breadcrumb only; a failure of the fallback itself throws and is reported by the caller.)
+                CrashReporter.breadcrumb("JwpubImporter: zlib inflate failed, trying raw deflate")
                 inflate(raw, decrypted)
             }
         }

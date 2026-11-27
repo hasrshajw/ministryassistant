@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import com.harsha.myapplication.notifications.ReminderScheduler
 import org.json.JSONArray
@@ -136,7 +137,8 @@ object PeopleRepository {
     fun load(context: Context): List<PersonRecord> = try {
         val arr = JSONArray(context.prefs().getString(KEY, "[]") ?: "[]")
         List(arr.length()) { PersonRecord.fromJson(arr.getJSONObject(it)) }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        CrashReporter.record("PeopleRepository", e)
         emptyList()
     }
 
@@ -154,7 +156,8 @@ object PeopleRepository {
         ReminderScheduler.cancel(context, id)
         ReminderScheduler.clearState(context, id)
         true
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        CrashReporter.record("PeopleRepository", e)
         false
     }
 
@@ -177,9 +180,10 @@ object PeopleRepository {
         prefs.edit().putString(KEY, out.toString()).apply()
         // Saved OK: register (or move / cancel) the OS alarm for this person's next visit.
         // Failure to schedule must never make the save itself look like it failed.
-        runCatching { ReminderScheduler.schedule(context, record) }
+        CrashReporter.attempt("PeopleRepository") { ReminderScheduler.schedule(context, record) }
         true
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        CrashReporter.record("PeopleRepository", e)
         false
     }
 }

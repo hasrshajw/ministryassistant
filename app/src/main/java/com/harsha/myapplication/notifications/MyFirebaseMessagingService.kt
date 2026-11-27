@@ -1,5 +1,6 @@
 package com.harsha.myapplication.notifications
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -20,6 +21,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         // TODO: send token to your backend if you need server-side targeting.
+        CrashReporter.breadcrumb("FCM token refreshed")
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -33,7 +35,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             ?: ""
 
         if (body.isNotBlank() || message.notification != null) {
-            showNotification(title, body)
+            try {
+                showNotification(title, body)
+            } catch (e: Throwable) {
+                CrashReporter.record("FCMService", e, "Failed to show push notification")
+            }
         }
     }
 

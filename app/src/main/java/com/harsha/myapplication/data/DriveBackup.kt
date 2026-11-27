@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.Intent
 import com.google.android.gms.auth.GoogleAuthUtil
@@ -66,7 +67,7 @@ object DriveBackup {
     }
 
     fun signOut(context: Context) {
-        runCatching { signInClient(context).signOut() }
+        CrashReporter.attempt("DriveBackup") { signInClient(context).signOut() }
     }
 
     private fun accessToken(context: Context, account: GoogleSignInAccount): String {

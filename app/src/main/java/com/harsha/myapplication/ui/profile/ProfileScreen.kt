@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.profile
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -71,7 +72,7 @@ fun ProfileScreen(
     // Live counts from real repositories
     val noteCount = NotesRepository.notes.size
     val peopleCount = remember(context) {
-        runCatching { com.harsha.myapplication.data.PeopleRepository.load(context).size }.getOrDefault(0)
+        CrashReporter.attempt("ProfileScreen") { com.harsha.myapplication.data.PeopleRepository.load(context).size }.getOrDefault(0)
     }
     val hoursLabel = remember {
         val total = HoursRepository.entries.sumOf { it.minutes }
@@ -100,11 +101,14 @@ fun ProfileScreen(
                 )
             }
         } catch (e: ApiException) {
+            // 12501 = the user closed the sign-in sheet: not an error.
+            if (e.statusCode != 12501) CrashReporter.record("ProfileScreen", e, "Google Sign-In failed (${e.statusCode})")
             BackupRepository.onDriveConnectFailed(
                 if (e.statusCode == 12501) null // user cancelled
                 else (e.message ?: "Google Sign-In failed (${e.statusCode})")
             )
         } catch (e: Exception) {
+            CrashReporter.record("ProfileScreen", e)
             BackupRepository.onDriveConnectFailed(e.message ?: "Google Sign-In failed")
         }
     }

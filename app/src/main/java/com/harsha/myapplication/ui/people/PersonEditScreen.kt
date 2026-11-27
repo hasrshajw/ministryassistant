@@ -6,6 +6,7 @@
 
 package com.harsha.myapplication.ui.people
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -1238,7 +1239,7 @@ private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
     // DatePicker works in UTC midnight millis; parse/format in UTC to avoid off-by-one days.
     val utc = remember { dateFormat(utc = true) }
     val state = rememberDatePickerState(
-        initialSelectedDateMillis = remember { runCatching { utc.parse(initial)?.time }.getOrNull() },
+        initialSelectedDateMillis = remember { if (initial.isBlank()) null else CrashReporter.attempt("PersonEditScreen") { utc.parse(initial)?.time }.getOrNull() },
     )
     DatePickerDialog(
         onDismissRequest = onDismiss,
@@ -1259,7 +1260,12 @@ private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
 private fun TimePickerSheet(initial: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     val fmt = remember { timeFormat() }
     val start = remember {
-        Calendar.getInstance().apply { runCatching { fmt.parse(initial) }.getOrNull()?.let { time = it } }
+        Calendar.getInstance().apply {
+            // An empty initial value (new record) is expected, so it is not reported as a parse failure.
+            initial.takeIf { it.isNotBlank() }
+                ?.let { text -> CrashReporter.attempt("PersonEditScreen") { fmt.parse(text) }.getOrNull() }
+                ?.let { time = it }
+        }
     }
     val state = rememberTimePickerState(
         initialHour = start.get(Calendar.HOUR_OF_DAY),

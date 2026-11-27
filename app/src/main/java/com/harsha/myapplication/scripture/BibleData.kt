@@ -1,5 +1,6 @@
 package com.harsha.myapplication.scripture
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.util.JsonReader
 import android.util.JsonToken
@@ -192,7 +193,7 @@ object BibleData {
             try {
                 app.assets.open("scripture/telugu_bible_name_variants_300.json").use { BookMatcher.loadVariants(it) }
             } catch (e: Exception) {
-                Log.w(TAG, "Book name variants not loaded", e)
+                CrashReporter.record(TAG, e, "Book name variants not loaded")
             }
         }
     }
@@ -243,7 +244,7 @@ object BibleData {
                 DetectorSync.register(bible)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load bibles from disk", e)
+            CrashReporter.record(TAG, e, "Failed to load bibles from disk")
         } finally {
             synchronized(lock) {
                 if (active == null) active = bibles.lastOrNull()
@@ -283,7 +284,7 @@ object BibleData {
             )
         }
     } catch (e: Exception) {
-        Log.w(TAG, "Bad config file", e)
+        CrashReporter.record(TAG, e, "Bad config file")
         Config("", emptyList())
     }
 
@@ -304,7 +305,7 @@ object BibleData {
             if (name != null && verses.isNotEmpty()) ImportedBible(name, verses) else null
         }
     } catch (e: Exception) {
-        Log.e(TAG, "Failed to parse bible file: ${file.name}", e)
+        CrashReporter.record(TAG, e, "Failed to parse bible file: ${file.name}")
         null
     }
 
@@ -367,7 +368,7 @@ object BibleData {
                     tmp.renameTo(target)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to save bible '${bible.name}'", e)
+                CrashReporter.record(TAG, e, "Failed to save bible '${bible.name}'")
             }
         }
     }
@@ -387,7 +388,7 @@ object BibleData {
                     .put("order", JSONArray(order))
                 File(dir, CONFIG_NAME).writeText(o.toString())
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to save bible config", e)
+                CrashReporter.record(TAG, e, "Failed to save bible config")
             }
         }
     }

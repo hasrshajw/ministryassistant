@@ -1,5 +1,6 @@
 package com.harsha.myapplication.ui.theme
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.material3.ColorScheme
@@ -153,7 +154,7 @@ object AppearanceRepository {
         store = sp
         prefs = AppearancePrefs(
             themeMode = sp.getString(K_MODE, null)
-                ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
+                ?.let { CrashReporter.attempt("Appearance") { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.SYSTEM,
             palette = PaletteColors.firstOrNull { it.name == sp.getString(K_PALETTE, null) }
                 ?: DefaultPalette,

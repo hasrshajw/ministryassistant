@@ -1,5 +1,6 @@
 package com.harsha.myapplication.notifications
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -50,7 +51,7 @@ object ReminderScheduler {
             val timeText = p.nextVisitTime.orEmpty()
                 .replace('\u202f', ' ').replace('\u00a0', ' ').trim()
                 .ifEmpty { DEFAULT_TIME }
-            val time = runCatching { timeFormat().parse(timeText) }.getOrNull()
+            val time = CrashReporter.attempt("ReminderScheduler") { timeFormat().parse(timeText) }.getOrNull()
                 ?: timeFormat().parse(DEFAULT_TIME)!!
             val t = Calendar.getInstance().apply { this.time = time }
             Calendar.getInstance().apply {
@@ -60,7 +61,8 @@ object ReminderScheduler {
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             }.timeInMillis
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            CrashReporter.record("ReminderScheduler", e)
             null
         }
     }
@@ -81,7 +83,8 @@ object ReminderScheduler {
                 // Exact-alarm permission not granted: still fires while idle, but may be a few minutes late.
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             }
-        } catch (_: SecurityException) {
+        } catch (e: SecurityException) {
+            CrashReporter.record("ReminderScheduler", e)
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
         }
     }

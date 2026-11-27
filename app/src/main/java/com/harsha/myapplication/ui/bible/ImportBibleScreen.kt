@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.bible
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -279,6 +280,7 @@ fun ImportBibleScreen(
         try {
             uriHandler.openUri(JW_BIBLE_URL)
         } catch (e: Exception) {
+            CrashReporter.record("ImportBibleScreen", e)
             scope.launch {
                 snackbarHostState.currentSnackbarData?.dismiss()
                 snackbarHostState.showSnackbar("No browser found to open jw.org")

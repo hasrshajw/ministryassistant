@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.util.AtomicFile
 import android.util.JsonWriter
@@ -154,7 +155,7 @@ object NotesRepository {
                     writer.flush()          // flush only: AtomicFile closes the stream in finishWrite
                     file.finishWrite(out)
                 } catch (e: IOException) {
-                    Log.e(TAG, "Failed to save notes", e)
+                    CrashReporter.record(TAG, e, "Failed to save notes")
                     file.failWrite(out)
                     dirty.set(true)         // try again with the next save
                 }
@@ -190,14 +191,20 @@ object NotesRepository {
         val file = atomicFile ?: return emptyList()
         val text = try {
             file.openRead().use { it.readBytes().toString(Charsets.UTF_8) }
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            // A missing file is the normal first-launch state; anything else is a real read failure.
+            if (e is java.io.FileNotFoundException) {
+                CrashReporter.breadcrumb("NotesRepository: no notes file yet (first launch)")
+            } else {
+                CrashReporter.record("NotesRepository", e, "Failed to read notes file")
+            }
             return emptyList() // first launch
         }
         return try {
             decode(text)
         } catch (e: Exception) {
-            Log.e(TAG, "Notes file is corrupt; keeping a copy", e)
-            runCatching {
+            CrashReporter.record(TAG, e, "Notes file is corrupt; keeping a copy")
+            CrashReporter.attempt("NotesRepository") {
                 File(base.parentFile, "notes.corrupt-${System.currentTimeMillis()}.json")
                     .writeText(text)
             }

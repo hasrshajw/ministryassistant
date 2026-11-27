@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
@@ -134,7 +135,7 @@ object BackupRepository {
         prefs = BackupPrefs(
             autoBackup = sp.getBoolean(K_AUTO, false),
             frequency = sp.getString(K_FREQ, null)
-                ?.let { runCatching { BackupFrequency.valueOf(it) }.getOrNull() }
+                ?.let { CrashReporter.attempt("BackupRepository") { BackupFrequency.valueOf(it) }.getOrNull() }
                 ?: BackupFrequency.WEEKLY,
             wifiOnly = sp.getBoolean(K_WIFI, true),
             keepLast = sp.getInt(K_KEEP, 5),
@@ -195,6 +196,7 @@ object BackupRepository {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                CrashReporter.record("BackupRepository", e)
                 task = BackupTask.Failed(kind, e.message ?: "Something went wrong")
             }
         }

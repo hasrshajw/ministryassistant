@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.editor.components
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -98,7 +99,7 @@ internal fun PlacedImage(
     LaunchedEffect(selected) {
         if (selected) {
             delay(320)
-            runCatching { requester.bringIntoView() }
+            CrashReporter.attempt("AttachedImage") { requester.bringIntoView() }
         }
     }
     Box(

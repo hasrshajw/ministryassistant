@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
@@ -81,7 +82,8 @@ object FolderRepository {
                 val name = o.optString("name", "").trim()
                 if (name.isEmpty()) null else Entry(name, o.optInt("color", 0xFFFFD54F.toInt()))
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            CrashReporter.record("FolderRepository", e)
             emptyList()
         }
     }
