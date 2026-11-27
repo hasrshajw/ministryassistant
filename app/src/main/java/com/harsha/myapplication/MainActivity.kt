@@ -597,6 +597,7 @@ fun MainAppScaffold() {
                                                 showNoteEditor = true
                                             },
                                             onDrawerOpenChange = { notesDrawerOpen = it },
+                                            onImportClick = { showBackup = true },
                                             contentPadding = innerPadding,
                                         )
                                         2 -> Box(screenInsets) { PeopleScreen() }

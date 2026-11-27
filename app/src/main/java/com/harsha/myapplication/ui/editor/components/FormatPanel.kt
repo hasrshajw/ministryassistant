@@ -54,23 +54,28 @@ internal fun FormatPanel(
     val colors = MaterialTheme.colorScheme
     PanelScaffold {
         PanelSection("Style") {
-            ConnectedButtonGroup(
-                items = toggleItems.map { (type, icon, label) ->
-                    GroupItem(
-                        description = label,
-                        selected = isOn(type),
-                        onClick = { onToggle(type) },
-                        icon = icon,
-                        role = Role.Checkbox
-                    )
-                } + GroupItem(
-                    description = "Clear formatting",
-                    selected = false,
+            // Material 3 Expressive floating toolbar living in the layout (not a Popup):
+            // bold / italic / underline / strikethrough toggles plus clear-formatting.
+            HorizontalFloatingToolbar(
+                expanded = true,
+                colors = FloatingToolbarDefaults.standardFloatingToolbarColors()
+            ) {
+                toggleItems.forEach { (type, icon, label) ->
+                    IconToggleButton(
+                        checked = isOn(type),
+                        onCheckedChange = { onToggle(type) },
+                        colors = IconButtonDefaults.iconToggleButtonColors(
+                            checkedContainerColor = colors.primary,
+                            checkedContentColor = colors.onPrimary
+                        ),
+                        shapes = IconButtonDefaults.toggleableShapes()
+                    ) { Icon(icon, contentDescription = label) }
+                }
+                IconButton(
                     onClick = onClear,
-                    icon = Icons.Default.FormatClear,
-                    role = Role.Button
-                )
-            )
+                    shapes = IconButtonDefaults.shapes()
+                ) { Icon(Icons.Default.FormatClear, contentDescription = "Clear formatting") }
+            }
         }
 
         PanelDivider()

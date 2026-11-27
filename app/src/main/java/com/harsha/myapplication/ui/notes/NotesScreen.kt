@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.notes
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Menu
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.filled.Stadium
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.*
@@ -172,6 +175,8 @@ fun NotesScreen(
     onAddNoteClick: (folder: String?) -> Unit = {},
     /** No longer shown (the Quick Notes button was removed from the side menu); kept so existing callers still compile. */
     onQuickNotesClick: (folder: String?) -> Unit = onAddNoteClick,
+    /** Opens import / restore (lives in Settings > Backup). */
+    onImportClick: () -> Unit = {},
     onNoteClick: (NoteItem) -> Unit = {},
     folders: List<NotesFolder> = emptyList(),
     onFolderClick: (NotesFolder) -> Unit = {},
@@ -193,6 +198,7 @@ fun NotesScreen(
     // Folders created from the side menu in this session, stored as "name<US>argb".
     var createdFolders by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var showNewFolder by rememberSaveable { mutableStateOf(false) }
+    var fabMenuOpen by rememberSaveable { mutableStateOf(false) }
     var editingFolder by remember { mutableStateOf<NotesFolder?>(null) }
 
     // Load the saved folders (and make sure the notes store is open). Both calls are no-ops after the first.
@@ -249,6 +255,8 @@ fun NotesScreen(
     val listState = rememberLazyListState()
     val typography = MaterialTheme.typography
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    // Back closes the FAB menu first.
+    BackHandler(enabled = fabMenuOpen) { fabMenuOpen = false }
     val fabExpanded by remember {
         derivedStateOf { listState.lastScrolledBackward || !listState.canScrollBackward }
     }
@@ -426,20 +434,56 @@ fun NotesScreen(
                     )
                 },
                 floatingActionButton = {
-                    val fabSrc = remember { MutableInteractionSource() }
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            feedback.click()
-                            onAddNoteClick(selectedFolderName)   // opens the editor in the selected folder
-                        },
-                        interactionSource = fabSrc,
-                        modifier = Modifier.pressScale(fabSrc),
-                        containerColor = colors.primary,
-                        contentColor = colors.onPrimary,
-                        expanded = fabExpanded,
-                        icon = { Icon(Icons.Default.Add, contentDescription = "New note") },
-                        text = { Text("New note", style = typography.labelLargeEmphasized) },
-                    )
+                    FloatingActionButtonMenu(
+                        expanded = fabMenuOpen,
+                        button = {
+                            ToggleFloatingActionButton(
+                                checked = fabMenuOpen,
+                                onCheckedChange = {
+                                    feedback.click()
+                                    fabMenuOpen = !fabMenuOpen
+                                },
+                                modifier = Modifier.semantics {
+                                    contentDescription = if (fabMenuOpen) "Close menu" else "Add"
+                                }
+                            ) {
+                                val icon by remember {
+                                    derivedStateOf {
+                                        if (checkedProgress > 0.5f) Icons.Default.Close else Icons.Default.Add
+                                    }
+                                }
+                                Icon(icon, contentDescription = null, modifier = Modifier.animateIcon({ checkedProgress }))
+                            }
+                        }
+                    ) {
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                fabMenuOpen = false
+                                feedback.click()
+                                onAddNoteClick(selectedFolderName) // opens the editor in the selected folder
+                            },
+                            icon = { Icon(Icons.Outlined.EditNote, contentDescription = null) },
+                            text = { Text("New note") }
+                        )
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                fabMenuOpen = false
+                                feedback.click()
+                                showNewFolder = true
+                            },
+                            icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) },
+                            text = { Text("New folder") }
+                        )
+                        FloatingActionButtonMenuItem(
+                            onClick = {
+                                fabMenuOpen = false
+                                feedback.click()
+                                onImportClick()
+                            },
+                            icon = { Icon(Icons.Outlined.FileDownload, contentDescription = null) },
+                            text = { Text("Import / restore") }
+                        )
+                    }
                 },
                 containerColor = colors.surface
             ) { padding ->
