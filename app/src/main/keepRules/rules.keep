@@ -10,3 +10,7 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+# Kotlin stdlib / coroutines: R8 repackaging of kotlin.sequences produced
+# IllegalAccessError (kotlin.sequences.d extended by p12) in BackupRepository.<clinit>.
+-keep class kotlin.sequences.** { *; }
+-dontwarn kotlin.sequences.**
