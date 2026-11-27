@@ -7,9 +7,38 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:642904120818:android:daaec74d9ca734a3d41f6b",
+        "mobilesdk_app_id": "1:642904120818:android:5013b790a0259518d41f6b",
         "android_client_info": {
           "package_name": "com.harsha.myapplication"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "642904120818-3ohu2dmec44j6nvb6kma4naviulb0ugt.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3ecYCGnRVkHegl-ohByE2uooSF3xxDU4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "642904120818-3ohu2dmec44j6nvb6kma4naviulb0ugt.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:642904120818:android:daaec74d9ca734a3d41f6b",
+        "android_client_info": {
+          "package_name": "com.harsha.schedy"
         }
       },
       "oauth_client": [
@@ -17,7 +46,7 @@
           "client_id": "642904120818-ecbjum8tsb570inv7adu9ih51hul1rap.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.harsha.myapplication",
+            "package_name": "com.harsha.schedy",
             "certificate_hash": "aa8fa356793cfb5347a9fa7cf3189ef48fea0974"
           }
         },
