@@ -231,10 +231,13 @@ object ScriptureDetector {
     private const val SEP_LONG = """(?:\s*[:：]\s*|\.|$VERSE_WORD)"""
     private const val CHAPTER_WORD = """(?:(?:chapter|chap|ch)\.?\s*)?"""
 
+    // NOTE: the look-ahead below must stay unambiguous (digits, then separators that are REQUIRED between
+    // digit groups). The old form `(?:[sep]*\d{1,3})*` let a long run of digits be split into groups in
+    // exponentially many ways, so "John 3:16 and 1234567891234567891234567x" froze the editor (ANR).
     // List connector: "," ";" or "&" / "and" (the latter two only when the number after them is not
     // followed by a word, so "John 3:16 and 17 people came" is NOT read as verse 17).
     private const val LIST_JOIN =
-        """(?:[,;]|(?:&|(?i:and))(?=\s*\d{1,3}(?:[:：.\-–—,;\s]*\d{1,3})*(?![\p{L}\d]|\s+\p{L})))"""
+        """(?:[,;]|(?:&|(?i:and))(?=\s*\d+(?:[:：.\-–—,;\s]+\d+)*(?![\p{L}\d]|\s+\p{L})))"""
 
     // Not a reference when the verse is directly followed by ".digit" ("Mark 2.5.1", a version number).
     private const val END_GUARD = """(?![\p{L}\p{M}\p{N}]|\.\d)"""

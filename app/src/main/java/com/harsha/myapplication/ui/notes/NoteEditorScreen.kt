@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.notes
 
+import com.harsha.myapplication.ui.components.launchSafely
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -628,7 +629,7 @@ fun NoteEditorView(
     }
 
     // ---- body editing ----
-    fun updateBody(input: TextFieldValue, byUser: Boolean) {
+    fun updateBodyUnsafe(input: TextFieldValue, byUser: Boolean) {
         val old = bodyValue.text
         var v = input
         var forceRenumber = false
@@ -758,6 +759,27 @@ fun NoteEditorView(
         }
         lineAligns = fitAligns(la, v.text)
         bodyValue = v
+    }
+
+    /**
+     * Every keystroke goes through here. The smart behaviour (list continuation, image
+     * placeholders, format shifting) lives in [updateBodyUnsafe]; if it ever throws for an unusual
+     * keyboard / IME state, the typed text is still accepted, so the editor never crashes.
+     */
+    fun updateBody(input: TextFieldValue, byUser: Boolean) {
+        try {
+            updateBodyUnsafe(input, byUser)
+        } catch (e: Throwable) {
+            CrashReporter.record("NoteEditorScreen", e, "Text edit handler failed")
+            val old = bodyValue.text
+            val len = input.text.length
+            spans = try { shiftSpans(spans, old, input.text).first } catch (_: Throwable) { emptyList() }
+            lineAligns = try { fitAligns(lineAligns, input.text) } catch (_: Throwable) { emptyList() }
+            bodyValue = TextFieldValue(
+                input.text,
+                TextRange(input.selection.start.coerceIn(0, len), input.selection.end.coerceIn(0, len))
+            )
+        }
     }
 
     // ---- inline image operations ----
@@ -1075,6 +1097,9 @@ fun NoteEditorView(
     // Texts of the wrong references from the previous pass, so the shake only plays for NEW ones.
     val lastInvalidTexts = remember { mutableListOf<String>() }
     LaunchedEffect(content, BibleData.version) {
+        // Detection is a bonus feature: if it fails on some device (out of memory, a regex stack
+        // overflow on a very long line, ...) the note stays fully editable, just without highlights.
+        try {
         delay(150)
         // The caret is still inside / at the end of a chapter:verse number ("2:2" on the way to
         // "2:20"). Wait a little longer so a half-typed number is never judged (blue / red).
@@ -1143,6 +1168,11 @@ fun NoteEditorView(
             // Haptics only for what the user just typed, not when an existing note is opened.
             if (editing) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
             detectionFx.trigger(scope, fresh.ifEmpty { ranges.takeLast(1) })
+        }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            CrashReporter.record("NoteEditorScreen", e, "Scripture detection failed")
         }
     }
 
@@ -2040,9 +2070,11 @@ fun NoteEditorView(
                                     if (panel == Panel.Image) {
                                         togglePanel(Panel.Image) // close the image panel
                                     } else {
-                                        imagePicker.launch(
-                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
+                                        launchSafely(context, "NoteEditorScreen", "No photo picker found on this device") {
+                                            imagePicker.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        }
                                     }
                                 }
                             ) {

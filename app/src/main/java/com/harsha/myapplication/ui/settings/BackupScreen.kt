@@ -2,6 +2,8 @@
 
 package com.harsha.myapplication.ui.settings
 
+import com.harsha.myapplication.ui.components.startDriveSignIn
+import com.harsha.myapplication.ui.components.launchSafely
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.Intent
@@ -233,8 +235,7 @@ fun BackupScreen(onBack: () -> Unit) {
                                 enabled = !BackupRepository.driveConnecting,
                                 showChevron = !BackupRepository.driveConnecting,
                                 onClick = {
-                                    BackupRepository.beginDriveConnect()
-                                    driveSignInLauncher.launch(DriveBackup.signInIntent(context))
+                                    startDriveSignIn(context, driveSignInLauncher)
                                 },
                                 trailing = if (BackupRepository.driveConnecting) loadingTrailing else null,
                             )
@@ -394,14 +395,22 @@ fun BackupScreen(onBack: () -> Unit) {
                         icon = Icons.Outlined.FileUpload, title = "Export data",
                         subtitle = "Save a backup file anywhere you like",
                         enabled = !running, showChevron = true,
-                        onClick = { exportLauncher.launch(BackupRepository.suggestedFileName()) },
+                        onClick = {
+                            launchSafely(context, "BackupScreen", "No file manager found to save the backup") {
+                                exportLauncher.launch(BackupRepository.suggestedFileName())
+                            }
+                        },
                     )
                     BkRow(
                         pos = BkPos(first = false, last = true), tone = BkTone.Tertiary,
                         icon = Icons.Outlined.FileDownload, title = "Import data",
                         subtitle = "Restore from a backup file",
                         enabled = !running, showChevron = true,
-                        onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                        onClick = {
+                            launchSafely(context, "BackupScreen", "No file manager found to pick a backup") {
+                                importLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+                            }
+                        },
                     )
                 }
             }

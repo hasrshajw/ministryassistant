@@ -6,6 +6,7 @@
 
 package com.harsha.myapplication.ui.settings
 
+import com.harsha.myapplication.ui.components.openAppNotificationSettings
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -174,10 +175,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !permissionDenied) {
             permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            context.startActivity(
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-            )
+            openAppNotificationSettings(context)
         }
     }
 

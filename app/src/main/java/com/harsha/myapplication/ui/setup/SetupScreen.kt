@@ -11,6 +11,7 @@
 
 package com.harsha.myapplication.ui.setup
 
+import com.harsha.myapplication.ui.components.openAppNotificationSettings
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -271,10 +272,7 @@ fun SetupWizardScreen(
     }
 
     fun openNotificationSettings() {
-        context.startActivity(
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-        )
+        openAppNotificationSettings(context)
     }
 
     BackHandler(enabled = currentStep > STEP_WELCOME && !finishing) { currentStep-- }

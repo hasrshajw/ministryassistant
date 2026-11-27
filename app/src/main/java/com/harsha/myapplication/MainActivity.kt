@@ -211,11 +211,38 @@ class MainActivity : ComponentActivity() {
                         // CompositionLocal. Any descendant can now use
                         // Modifier.appSharedBounds / appSharedElement.
                         AppSharedTransitionHost {
-                            MainAppScaffold()
+                            AdaptiveContentFrame {
+                                MainAppScaffold()
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Keeps the app readable on big windows (tablets, unfolded foldables, desktop / freeform mode):
+ * content is centred and capped at the Material "expanded" width instead of stretching edge to
+ * edge. On phones (and phone landscape) the window is narrower than the cap, so nothing changes.
+ * The strips beside the content use the app background, so dark / light themes stay consistent.
+ */
+@Composable
+private fun AdaptiveContentFrame(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = 840.dp)
+                .fillMaxWidth(),
+        ) {
+            content()
         }
     }
 }

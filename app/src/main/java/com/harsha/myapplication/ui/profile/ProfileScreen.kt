@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.profile
 
+import com.harsha.myapplication.ui.components.startDriveSignIn
 import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -148,8 +149,7 @@ fun ProfileScreen(
                 SignInPromptCard(
                     connecting = BackupRepository.driveConnecting,
                     onSignIn = {
-                        BackupRepository.beginDriveConnect()
-                        driveSignInLauncher.launch(DriveBackup.signInIntent(context))
+                        startDriveSignIn(context, driveSignInLauncher)
                     },
                     modifier = Modifier.revealOnEnter(index = 0, playOnceKey = "profile-signin")
                 )
@@ -238,8 +238,7 @@ fun ProfileScreen(
                         subtitle = item.subtitle,
                         onClick = {
                             if (!driveConnected && item.title.startsWith("Connect")) {
-                                BackupRepository.beginDriveConnect()
-                                driveSignInLauncher.launch(DriveBackup.signInIntent(context))
+                                startDriveSignIn(context, driveSignInLauncher)
                             }
                         },
                         trailing = {

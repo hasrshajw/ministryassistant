@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -130,7 +131,12 @@ object BibleData {
     private const val CONFIG_NAME = "config.json"
     private const val SAMPLE_NAME = "Sample (limited)"
 
-    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Anything that escapes a background task is reported instead of killing the app
+    // (an OutOfMemoryError while loading a big Bible on a low-RAM phone, for example).
+    private val ioScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, t -> CrashReporter.record(TAG, t, "Unhandled error in a Bible background task") }
+    )
     private val lock = Any()        // guards the in-memory state below
     private val fileLock = Any()    // serialises file writes / deletes
 
@@ -243,7 +249,7 @@ object BibleData {
                 bible.warmUp()
                 DetectorSync.register(bible)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             CrashReporter.record(TAG, e, "Failed to load bibles from disk")
         } finally {
             synchronized(lock) {
@@ -304,7 +310,8 @@ object BibleData {
             r.endObject()
             if (name != null && verses.isNotEmpty()) ImportedBible(name, verses) else null
         }
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+        // Includes OutOfMemoryError: a Bible that does not fit in memory is skipped, not fatal.
         CrashReporter.record(TAG, e, "Failed to parse bible file: ${file.name}")
         null
     }
@@ -367,8 +374,9 @@ object BibleData {
                     target.delete()
                     tmp.renameTo(target)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 CrashReporter.record(TAG, e, "Failed to save bible '${bible.name}'")
+                try { File(dir, fileName(bible.name) + ".tmp").delete() } catch (_: Throwable) {}
             }
         }
     }

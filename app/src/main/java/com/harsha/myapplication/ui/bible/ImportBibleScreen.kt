@@ -298,31 +298,81 @@ fun ImportBibleScreen(
         )
     }
 
+    // Shared by both pickers below.
+    val onFilePicked: (Uri?) -> Unit = { uri ->
+        if (uri != null) {
+            importing = true
+
+            scope.launch {
+                // The importer reports its own failures, but anything unexpected (an OutOfMemoryError on
+                // a low-RAM phone, a provider that dies mid-read) must end as a message, not a crash.
+                val result = try {
+                    JwpubImporter.importFromUri(context, uri)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    importing = false
+                    throw e
+                } catch (e: Throwable) {
+                    CrashReporter.record("ImportBibleScreen", e, "Import crashed")
+                    JwpubImporter.ImportResult(
+                        success = false,
+                        message = if (e is OutOfMemoryError) {
+                            "Not enough free memory to import this Bible. Close other apps and try again."
+                        } else {
+                            "Import failed"
+                        }
+                    )
+                }
+                importing = false
+
+                if (result.success) {
+                    try {
+                        // Name the Bible by language: verse-text script (Telugu / Hindi) first,
+                        // then the file-name code, then the publication title.
+                        val language = detectLanguageFromText(result.verses)
+                            ?: detectLanguageFromFileName(context, uri)
+                            ?: result.translationTitle.ifBlank { "Imported Bible" }
+
+                        BibleData.loadVerses(result.verses, language)
+                        refreshKey++
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        launch { snackbarHostState.showSnackbar("$language Bible imported") }
+                        onImportSuccess(language)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        CrashReporter.record("ImportBibleScreen", e, "Could not save imported Bible")
+                        snackbarHostState.showSnackbar("Could not save this Bible")
+                    }
+                } else {
+                    snackbarHostState.showSnackbar(result.message.ifBlank { "Import failed" })
+                }
+            }
+        }
+    }
+
+    // GetContent is the usual picker. A few devices have no handler for it (it throws
+    // ActivityNotFoundException) but do have the system document picker, so that is the fallback.
     val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-
-        importing = true
-
-        scope.launch {
-            val result = JwpubImporter.importFromUri(context, uri)
-            if (result.success) {
-                // Name the Bible by language: verse-text script (Telugu / Hindi) first,
-                // then the file-name code, then the publication title.
-                val language = detectLanguageFromText(result.verses)
-                    ?: detectLanguageFromFileName(context, uri)
-                    ?: result.translationTitle.ifBlank { "Imported Bible" }
-
-                BibleData.loadVerses(result.verses, language)
-                importing = false
-                refreshKey++
-                snackbarHostState.currentSnackbarData?.dismiss()
-                launch { snackbarHostState.showSnackbar("$language Bible imported") }
-                onImportSuccess(language)
-            } else {
-                importing = false
-                snackbarHostState.showSnackbar(result.message.ifBlank { "Import failed" })
+        contract = ActivityResultContracts.GetContent(),
+        onResult = onFilePicked
+    )
+    val documentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = onFilePicked
+    )
+    val launchFilePicker: () -> Unit = {
+        try {
+            filePicker.launch("*/*")
+        } catch (first: Throwable) {
+            CrashReporter.record("ImportBibleScreen", first, "GetContent picker unavailable")
+            try {
+                documentPicker.launch(arrayOf("*/*"))
+            } catch (second: Throwable) {
+                CrashReporter.record("ImportBibleScreen", second, "No file picker on this device")
+                scope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar("No file manager found. Use \"Available to download\" instead.")
+                }
             }
         }
     }
@@ -402,7 +452,7 @@ fun ImportBibleScreen(
             Box(Modifier.revealOnEnter(index = 0, playOnceKey = "import-bible-card")) {
                 ImportCard(
                     importing = importing,
-                    onClick = { if (!importing) filePicker.launch("*/*") }
+                    onClick = { if (!importing) launchFilePicker() }
                 )
             }
 

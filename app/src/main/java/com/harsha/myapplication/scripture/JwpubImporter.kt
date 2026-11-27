@@ -167,6 +167,10 @@ object JwpubImporter {
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (e: OutOfMemoryError) {
+            // Low-RAM phones: an Error, so `catch (e: Exception)` never sees it and the app would die.
+            CrashReporter.record(TAG, e, "Out of memory during import")
+            ImportResult(false, message = "Not enough free memory to import this Bible. Close other apps and try again.")
         } catch (e: Exception) {
             CrashReporter.record(TAG, e, "Import failed")
             ImportResult(false, message = e.message ?: "Unknown error")

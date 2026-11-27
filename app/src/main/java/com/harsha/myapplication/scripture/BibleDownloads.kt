@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -88,7 +89,10 @@ object BibleDownloads {
     /** One-shot messages ("English Bible imported", "Download failed: ...") for the visible screen. */
     val events: SharedFlow<String> = _events.asSharedFlow()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO +
+            CoroutineExceptionHandler { _, t -> CrashReporter.record(TAG, t, "Unhandled error in a Bible download") }
+    )
     private val lock = Any()
     private val jobs = HashMap<String, Job>()
 
@@ -122,7 +126,10 @@ object BibleDownloads {
     private fun finish(app: Context, id: String) {
         synchronized(lock) {
             jobs.remove(id)
-            if (jobs.isEmpty()) app.stopService(Intent(app, BibleDownloadService::class.java))
+            // Never stopService() here: if the download fails instantly (no network) the service may not
+            // have reached startForeground() yet, and stopping it first crashes the app with
+            // "Context.startForegroundService() did not then call Service.startForeground()".
+            if (jobs.isEmpty()) BibleDownloadService.requestStop()
         }
     }
 
@@ -151,9 +158,16 @@ object BibleDownloads {
         } catch (e: CancellationException) {
             states.remove(source.id)
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable, not Exception: OutOfMemoryError on a low-RAM phone must end as a failed
+            // download with a message, never as a crash.
             CrashReporter.record(TAG, e, "Download failed for ${source.id}")
-            fail(app, source, e.message ?: "Download failed")
+            val reason = if (e is OutOfMemoryError) {
+                "Not enough free memory. Close other apps and try again."
+            } else {
+                e.message ?: "Download failed"
+            }
+            fail(app, source, reason)
         } finally {
             file.delete()
             finish(app, source.id)
