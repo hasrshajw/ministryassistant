@@ -112,6 +112,11 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.harsha.myapplication.R
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -505,7 +510,7 @@ private fun WelcomeStep(onGetStarted: () -> Unit) {
             ) {
                 Spacer(Modifier.height(24.dp))
 
-                HeroBadge(Icons.Outlined.Book, Modifier.revealOnEnter(0))
+                HeroBadge(painterResource(R.drawable.logo), Modifier.revealOnEnter(0))
                 Spacer(Modifier.height(24.dp))
 
                 Text(
@@ -1174,6 +1179,39 @@ private fun StepScaffold(
             BigCtaButton(ctaLabel, onCta, enabled = ctaEnabled, icon = ctaIcon)
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Slowly rotating cookie badge with a logo painter on top. */
+@Composable
+private fun HeroBadge(
+    painter: Painter,
+    modifier: Modifier = Modifier,
+) {
+    val infinite = rememberInfiniteTransition(label = "hero")
+    val rotation by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing)),
+        label = "heroRotation"
+    )
+    val container = MaterialTheme.colorScheme.primaryContainer
+    Box(modifier.size(88.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { rotationZ = rotation }
+                .clip(MaterialShapes.Cookie9Sided.toShape())
+                .background(container)
+        )
+        Image(
+            painter = painter,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(MaterialTheme.shapes.medium)
+        )
     }
 }
 

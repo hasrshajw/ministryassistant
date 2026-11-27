@@ -13,6 +13,7 @@ import com.harsha.myapplication.telemetry.CrashReporter
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -27,23 +28,36 @@ enum class LockTimeout(val label: String, val millis: Long) {
     FiveMinutes("5 minutes", 300_000L),
 }
 
-/** Result of checking a PIN or recovery PIN. */
+/** Result of checking a PIN or recovery answer. */
 sealed interface PinCheck {
     data object Ok : PinCheck
     data class Wrong(val attemptsLeftBeforeLockout: Int) : PinCheck
     data class LockedOut(val remainingMillis: Long) : PinCheck
 }
 
+/** Recovery questions the user can pick from. [id] is what is stored, so the wording can change safely. */
+enum class SecurityQuestion(val id: String, val text: String) {
+    Pet("pet", "What was the name of your first pet?"),
+    School("school", "What was the name of your first school?"),
+    Town("town", "In which town were you born?"),
+    Nickname("nick", "What was your childhood nickname?"),
+    Teacher("teacher", "Who was your favourite teacher?"),
+    Friend("friend", "What is your best friend's first name?"),
+    Street("street", "What street did you grow up on?"),
+    Food("food", "What is your favourite food from childhood?"),
+}
+
 /** Which of the two secrets is being checked. Each has its own counter and lockout schedule. */
 enum class PinKind(val key: String, val freeAttempts: Int, val baseLockMs: Long) {
     Pin("pin", freeAttempts = 5, baseLockMs = 30_000L),
+    /** The recovery-question answer. */
     Recovery("rec", freeAttempts = 3, baseLockMs = 900_000L),
 }
 
 /**
  * In-app PIN lock.
  *
- *  - Neither the PIN nor the recovery PIN is stored. Each is kept as a salted PBKDF2 hash, which is then
+ *  - Neither the PIN nor the recovery answer is stored. Each is kept as a salted PBKDF2 hash, which is then
  *    encrypted with an Android Keystore key (so a copied prefs file is useless on another phone).
  *  - Wrong tries are counted and persisted; after [PinKind.freeAttempts] the wait doubles each time.
  *    The wait is measured with elapsedRealtime, so changing the phone clock does not skip it.
@@ -56,8 +70,14 @@ object SecurityRepository {
     private const val KEY_TIMEOUT = "timeout"
     private const val KEY_ALIAS = "ministry_lock_key"
     private const val ITERATIONS = 120_000
+    private const val KEY_QUESTION = "q_id"
+    private const val KEY_PIN_LEN = "pin_len"
+    /** PINs are exactly 4 digits. */
     const val MIN_LENGTH = 4
-    const val MAX_LENGTH = 6
+    const val MAX_LENGTH = 4
+    /** Older installs may still have a 5-6 digit PIN until it is changed. */
+    private const val LEGACY_MAX_LENGTH = 6
+    const val MIN_ANSWER_LENGTH = 3
 
     var isEnabled by mutableStateOf(false)
         private set
@@ -65,6 +85,13 @@ object SecurityRepository {
         private set
     var timeout by mutableStateOf(LockTimeout.OneMinute)
         private set
+    /** The chosen recovery question, or null when none is set yet (older installs). */
+    var question by mutableStateOf<SecurityQuestion?>(null)
+        private set
+    private var legacyPin by mutableStateOf(false)
+
+    /** How many digits the current PIN has: 4, or up to 6 for a PIN made by an older version. */
+    val pinLength: Int get() = if (legacyPin) LEGACY_MAX_LENGTH else MAX_LENGTH
 
     private var initialized = false
     private var backgroundedAt = 0L
@@ -76,7 +103,9 @@ object SecurityRepository {
         if (initialized) return
         initialized = true
         val p = prefs(context)
-        isEnabled = p.getBoolean(KEY_ENABLED, false) && p.contains("pin_hash") && p.contains("rec_hash")
+        isEnabled = p.getBoolean(KEY_ENABLED, false) && p.contains("pin_hash")
+        legacyPin = isEnabled && !p.contains(KEY_PIN_LEN)
+        question = SecurityQuestion.entries.firstOrNull { it.id == p.getString(KEY_QUESTION, null) }
         timeout = LockTimeout.entries.firstOrNull { it.name == p.getString(KEY_TIMEOUT, null) }
             ?: LockTimeout.OneMinute
         isLocked = isEnabled // cold start always asks
@@ -101,16 +130,21 @@ object SecurityRepository {
 
     // ───────────── Setup, change, turn off ─────────────
 
-    /** Turns the lock on. The two PINs must differ and be [MIN_LENGTH]..[MAX_LENGTH] digits. */
-    fun enable(context: Context, pin: String, recoveryPin: String): Boolean {
-        if (!isValid(pin) || !isValid(recoveryPin) || pin == recoveryPin) return false
+    /** Turns the lock on with a 4-digit PIN and a recovery question + answer. */
+    fun enable(context: Context, pin: String, question: SecurityQuestion, answer: String): Boolean {
+        val a = normalizeAnswer(answer)
+        if (!isValid(pin) || !isValidAnswer(a)) return false
         return try {
             prefs(context).edit()
                 .putBoolean(KEY_ENABLED, true)
-                .also { storeSecret(it, PinKind.Pin, pin); storeSecret(it, PinKind.Recovery, recoveryPin) }
+                .putInt(KEY_PIN_LEN, MAX_LENGTH)
+                .putString(KEY_QUESTION, question.id)
+                .also { storeSecret(it, PinKind.Pin, pin); storeSecret(it, PinKind.Recovery, a) }
                 .also { clearCounters(it) }
                 .commit()
-                .also { if (it) { isEnabled = true; isLocked = false } }
+                .also {
+                    if (it) { isEnabled = true; isLocked = false; legacyPin = false; this.question = question }
+                }
         } catch (e: Exception) {
             CrashReporter.record("SecurityRepository.enable", e)
             false
@@ -119,21 +153,29 @@ object SecurityRepository {
 
     fun changePin(context: Context, newPin: String): Boolean {
         if (!isEnabled || !isValid(newPin)) return false
-        if (matches(context, PinKind.Recovery, newPin)) return false // must stay different
         return try {
-            prefs(context).edit().also { storeSecret(it, PinKind.Pin, newPin); clearCounters(it) }.commit()
+            prefs(context).edit()
+                .putInt(KEY_PIN_LEN, MAX_LENGTH)
+                .also { storeSecret(it, PinKind.Pin, newPin); clearCounters(it) }
+                .commit()
+                .also { if (it) legacyPin = false }
         } catch (e: Exception) {
             CrashReporter.record("SecurityRepository.changePin", e); false
         }
     }
 
-    fun changeRecoveryPin(context: Context, newRecovery: String): Boolean {
-        if (!isEnabled || !isValid(newRecovery)) return false
-        if (matches(context, PinKind.Pin, newRecovery)) return false
+    /** Replaces the recovery question and answer. */
+    fun changeQuestion(context: Context, question: SecurityQuestion, answer: String): Boolean {
+        val a = normalizeAnswer(answer)
+        if (!isEnabled || !isValidAnswer(a)) return false
         return try {
-            prefs(context).edit().also { storeSecret(it, PinKind.Recovery, newRecovery); clearCounters(it) }.commit()
+            prefs(context).edit()
+                .putString(KEY_QUESTION, question.id)
+                .also { storeSecret(it, PinKind.Recovery, a); clearCounters(it) }
+                .commit()
+                .also { if (it) this.question = question }
         } catch (e: Exception) {
-            CrashReporter.record("SecurityRepository.changeRecoveryPin", e); false
+            CrashReporter.record("SecurityRepository.changeQuestion", e); false
         }
     }
 
@@ -148,10 +190,17 @@ object SecurityRepository {
         timeout = value
     }
 
-    fun isValid(pin: String) = pin.length in MIN_LENGTH..MAX_LENGTH && pin.all { it in '0'..'9' }
+    fun isValid(pin: String) = pin.length == MAX_LENGTH && pin.all { it in '0'..'9' }
+
+    /** Answers are compared without caring about case or extra spaces. */
+    fun normalizeAnswer(answer: String): String =
+        answer.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+
+    fun isValidAnswer(answer: String) = normalizeAnswer(answer).length >= MIN_ANSWER_LENGTH
 
     /** True for 0000, 1111, 1234, 4321 and similar: refused at setup. */
     fun isTooSimple(pin: String): Boolean {
+        if (pin.length < 2) return false
         if (pin.toSet().size == 1) return true
         val d = pin.map { it - '0' }
         val step = d[1] - d[0]
@@ -177,7 +226,8 @@ object SecurityRepository {
         val wait = lockoutRemaining(context, kind)
         if (wait > 0) return PinCheck.LockedOut(wait)
         val p = prefs(context)
-        if (matches(context, kind, entered)) {
+        val secret = if (kind == PinKind.Recovery) normalizeAnswer(entered) else entered
+        if (matches(context, kind, secret)) {
             p.edit().putInt("${kind.key}_fails", 0).putLong("${kind.key}_until", 0L).apply()
             return PinCheck.Ok
         }

@@ -70,7 +70,7 @@ import com.harsha.myapplication.ui.theme.Motion
 
 private enum class Route { Home, Enable, VerifyDisable, VerifyChangePin, VerifyChangeRecovery, ChangePin, ChangeRecovery }
 
-/** Settings > Security: turn the PIN lock on or off, pick the timeout, change the PIN or recovery PIN. */
+/** Settings > Security: turn the PIN lock on or off, pick the timeout, change the PIN or recovery question. */
 @Composable
 fun SecuritySettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -96,9 +96,9 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
                 onChangeRecovery = { route = Route.VerifyChangeRecovery },
             )
             Route.Enable -> PinSetupFlow(
-                askRecovery = true,
-                onFinished = { pin, rec ->
-                    if (SecurityRepository.enable(context, pin, rec!!)) null else "Could not turn the lock on. Try again."
+                askQuestion = true,
+                onFinished = { pin, q, a ->
+                    if (SecurityRepository.enable(context, pin, q!!, a!!)) null else "Could not turn the lock on. Try again."
                 },
                 onDone = { route = Route.Home },
             )
@@ -106,25 +106,27 @@ fun SecuritySettingsScreen(onBack: () -> Unit) {
                 SecurityRepository.disable(context); route = Route.Home
             }
             Route.VerifyChangePin -> VerifyCurrentPin("Change PIN") { route = Route.ChangePin }
-            Route.VerifyChangeRecovery -> VerifyCurrentPin("Change recovery PIN") { route = Route.ChangeRecovery }
+            Route.VerifyChangeRecovery -> VerifyCurrentPin("Change recovery question") { route = Route.ChangeRecovery }
             Route.ChangePin -> PinSetupFlow(
-                askRecovery = false,
+                askQuestion = false,
                 secretName = "PIN",
-                onFinished = { pin, _ ->
-                    if (SecurityRepository.changePin(context, pin)) null
-                    else "Your PIN must be different from your recovery PIN."
+                onFinished = { pin, _, _ ->
+                    if (SecurityRepository.changePin(context, pin)) null else "Could not save the new PIN. Try again."
                 },
                 onDone = { route = Route.Home },
             )
-            Route.ChangeRecovery -> PinSetupFlow(
-                askRecovery = false,
-                secretName = "recovery PIN",
-                onFinished = { pin, _ ->
-                    if (SecurityRepository.changeRecoveryPin(context, pin)) null
-                    else "The recovery PIN must be different from your PIN."
-                },
-                onDone = { route = Route.Home },
-            )
+            Route.ChangeRecovery -> {
+                var error by remember { mutableStateOf<String?>(null) }
+                QuestionPanel(
+                    title = "Recovery question",
+                    subtitle = "Pick a question only you can answer. It is asked if you forget your PIN.",
+                    errorText = error,
+                    onSubmit = { q, a ->
+                        if (SecurityRepository.changeQuestion(context, q, a)) route = Route.Home
+                        else error = "Could not save. Try again."
+                    },
+                )
+            }
         }
     }
 }
@@ -137,6 +139,7 @@ private fun VerifyCurrentPin(title: String, onVerified: () -> Unit) {
     var errorKey by remember { mutableIntStateOf(0) }
     PinEntryPanel(
         title = title,
+        maxLength = SecurityRepository.pinLength,
         subtitle = "Enter your current PIN to continue.",
         errorText = error,
         errorKey = errorKey,
@@ -201,7 +204,12 @@ private fun SecurityHome(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     TimeoutRow(selected = SecurityRepository.timeout) { SecurityRepository.setTimeout(context, it) }
                     SecRow(Icons.Outlined.Pin, "Change PIN", "Needs your current PIN", onClick = onChangePin)
-                    SecRow(Icons.Outlined.Key, "Change recovery PIN", "Needs your current PIN", last = true, onClick = onChangeRecovery)
+                    SecRow(
+                        Icons.Outlined.Key,
+                        if (SecurityRepository.question == null) "Set recovery question" else "Change recovery question",
+                        SecurityRepository.question?.text ?: "Needed if you forget your PIN. Needs your current PIN",
+                        last = true, onClick = onChangeRecovery,
+                    )
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -209,8 +217,8 @@ private fun SecurityHome(
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.Info, null, tint = colors.onSecondaryContainer)
                     Text(
-                        "While the lock is on, the app also hides its screen in the recent apps list and blocks screenshots. " +
-                            "The PIN is stored only as a salted hash and is not included in backups.",
+                        "The lock only decides who can open the app. Screenshots and screen recording still work. " +
+                            "The PIN and your recovery answer are stored only as salted hashes and are not included in backups.",
                         style = MaterialTheme.typography.bodyMedium, color = colors.onSecondaryContainer,
                     )
                 }

@@ -311,42 +311,16 @@ private fun AppHeader() {
     }
 }
 
-/** The app's own launcher icon; falls back to a book icon. */
+/** The app's own logo icon. */
 @Composable
 private fun AppIcon(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val colors = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.large
-    val bitmap = remember {
-        CrashReporter.attempt("About") {
-            val drawable = context.packageManager.getApplicationIcon(context.packageName)
-            val size = 192
-            val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            drawable.setBounds(0, 0, size, size)
-            drawable.draw(android.graphics.Canvas(bmp))
-            bmp.asImageBitmap()
-        }.getOrNull()
-    }
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap,
-            contentDescription = "Ministry Assistant icon",
-            contentScale = ContentScale.Crop,
-            modifier = modifier.clip(shape)
-        )
-    } else {
-        Box(
-            modifier.clip(shape).background(colors.primary),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.AutoMirrored.Outlined.MenuBook,
-                contentDescription = null,
-                tint = colors.onPrimary,
-                modifier = Modifier.size(28.dp)
-            )
-        }
-    }
+    Image(
+        painter = painterResource(R.drawable.logo),
+        contentDescription = "Ministry Assistant logo",
+        contentScale = ContentScale.Crop,
+        modifier = modifier.clip(shape)
+    )
 }
 
 @Composable

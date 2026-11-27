@@ -5,9 +5,7 @@ import android.os.Bundle
 import com.harsha.myapplication.ui.security.SecuritySettingsScreen
 import com.harsha.myapplication.ui.security.LockScreen
 import com.harsha.myapplication.data.SecurityRepository
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.scaleOut
-import android.view.WindowManager
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
@@ -58,6 +56,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -197,19 +198,26 @@ class MainActivity : FragmentActivity() {
                 // It used to be a slow spring (stiffness 300 + 500ms hold), which felt laggy while
                 // Home was composing its first frame. Tweens are cheap and always finish on time.
                 // ---- App lock gate ----
-                // Locked: the app stays composed underneath (so navigation is kept) but is hidden from
-                // TalkBack and covered by an opaque overlay that swallows every touch.
+                // Locked: an opaque overlay swallows every touch. The app content underneath is removed
+                // while locked (see below) so no popup or keyboard can show through.
                 val locked = SecurityRepository.isLocked
-                // FLAG_SECURE whenever the lock is on: blank recents thumbnail and no screenshots.
-                LaunchedEffect(SecurityRepository.isEnabled) {
-                    if (SecurityRepository.isEnabled) {
-                        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-                    } else {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                // Screenshots and screen recording stay allowed: the lock only gates opening the app.
+                // While locked, the app content is removed from composition. That closes every dropdown, dialog
+                // and sheet (they are separate windows that would otherwise float above the lock screen), and
+                // the keyboard is hidden. Navigation state is kept in the holder below and restored on unlock.
+                val stateHolder = rememberSaveableStateHolder()
+                val focusManager = LocalFocusManager.current
+                val keyboard = LocalSoftwareKeyboardController.current
+                LaunchedEffect(locked) {
+                    if (locked) {
+                        focusManager.clearFocus(force = true)
+                        keyboard?.hide()
+                        WindowCompat.getInsetsController(window, view).hide(WindowInsetsCompat.Type.ime())
                     }
                 }
                 Box(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize().then(if (locked) Modifier.clearAndSetSemantics {} else Modifier)) {
+                Box(Modifier.fillMaxSize()) {
+                if (!locked) stateHolder.SaveableStateProvider("app_content") {
                 AnimatedContent(
                     targetState = SetupRepository.isSetupCompleted,
                     transitionSpec = {
@@ -238,6 +246,7 @@ class MainActivity : FragmentActivity() {
                         }
                     }
                 }
+                } // SaveableStateProvider
                 }
                 AnimatedVisibility(
                     visible = locked,

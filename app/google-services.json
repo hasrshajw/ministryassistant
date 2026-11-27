@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "642904120818-5m215m79cll8hn77a5b8mptd45ev0qps.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.harsha.myapplication",
+            "certificate_hash": "3bcc28919cde36f809676c3291283616a310b093"
+          }
+        },
+        {
           "client_id": "642904120818-3ohu2dmec44j6nvb6kma4naviulb0ugt.apps.googleusercontent.com",
           "client_type": 3
         }

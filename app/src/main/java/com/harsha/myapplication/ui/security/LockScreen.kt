@@ -49,6 +49,7 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -70,6 +71,19 @@ import com.harsha.myapplication.data.SecurityRepository
 import com.harsha.myapplication.ui.theme.Motion
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import com.harsha.myapplication.data.SecurityQuestion
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Shared pieces
@@ -120,6 +134,7 @@ internal fun PinEntryPanel(
     errorKey: Int = 0,
     padEnabled: Boolean = true,
     autoSubmitAtMax: Boolean = true,
+    maxLength: Int = SecurityRepository.MAX_LENGTH,
     badgeOpen: Boolean = false,
     badgeIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     footer: @Composable () -> Unit = {},
@@ -182,9 +197,9 @@ internal fun PinEntryPanel(
         }
         PinPad(
             onDigit = { d ->
-                if (pin.length < SecurityRepository.MAX_LENGTH) {
+                if (pin.length < maxLength) {
                     pin += d
-                    if (autoSubmitAtMax && pin.length == SecurityRepository.MAX_LENGTH) submit()
+                    if (autoSubmitAtMax && pin.length == maxLength) submit()
                 }
             },
             onBackspace = { pin = pin.dropLast(1) },
@@ -210,7 +225,7 @@ private enum class LockMode { Pin, Recovery, Reset }
 
 /**
  * Full-screen overlay shown while [SecurityRepository.isLocked]. PIN entry, a "Forgot PIN?" route through the
- * recovery PIN, and (after a correct recovery PIN) a forced reset of both PINs.
+ * recovery question, and (after a correct answer) a forced reset of the PIN.
  */
 @Composable
 fun LockScreen(modifier: Modifier = Modifier) {
@@ -261,10 +276,13 @@ fun LockScreen(modifier: Modifier = Modifier) {
                 }
             }
             is PinCheck.LockedOut -> { waitMs = r.remainingMillis; fail("Too many tries. Wait ${formatWait(r.remainingMillis)}.") }
-            is PinCheck.Wrong -> fail(
-                if (r.attemptsLeftBeforeLockout == 1) "Wrong PIN. 1 try left before a wait."
-                else "Wrong PIN. ${r.attemptsLeftBeforeLockout} tries left before a wait."
-            )
+            is PinCheck.Wrong -> {
+                val noun = if (mode == LockMode.Recovery) "answer" else "PIN"
+                fail(
+                    if (r.attemptsLeftBeforeLockout == 1) "Wrong $noun. 1 try left before a wait."
+                    else "Wrong $noun. ${r.attemptsLeftBeforeLockout} tries left before a wait."
+                )
+            }
         }
     }
 
@@ -279,47 +297,163 @@ fun LockScreen(modifier: Modifier = Modifier) {
             label = "lockMode",
         ) { m ->
             when (m) {
-                LockMode.Pin, LockMode.Recovery -> {
-                    val recovery = m == LockMode.Recovery
-                    PinEntryPanel(
-                        title = if (recovery) "Enter recovery PIN" else "Enter PIN",
-                        subtitle = when {
-                            lockedOut -> "Try again in ${formatWait(waitMs)}"
-                            recovery -> "Use the recovery PIN you created when you turned on the lock."
-                            else -> "Your ministry notes and contacts are locked."
-                        },
-                        onSubmit = ::handle,
-                        errorText = errorText,
-                        errorKey = errorKey,
-                        padEnabled = !lockedOut && !unlocking,
-                        autoSubmitAtMax = true,
-                        badgeOpen = unlocking,
-                        footer = {
-                            if (!recovery && canUseBiometric) {
-                                TextButton(onClick = { promptBiometric() }) {
-                                    Icon(Icons.Filled.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.size(8.dp))
-                                    Text("Use fingerprint")
-                                }
+                LockMode.Pin -> PinEntryPanel(
+                    title = "Enter PIN",
+                    subtitle = if (lockedOut) "Try again in ${formatWait(waitMs)}" else "Your ministry notes and contacts are locked.",
+                    onSubmit = ::handle,
+                    errorText = errorText,
+                    errorKey = errorKey,
+                    padEnabled = !lockedOut && !unlocking,
+                    autoSubmitAtMax = true,
+                    maxLength = SecurityRepository.pinLength,
+                    badgeOpen = unlocking,
+                    footer = {
+                        if (canUseBiometric) {
+                            TextButton(onClick = { promptBiometric() }) {
+                                Icon(Icons.Filled.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.size(8.dp))
+                                Text("Use fingerprint")
                             }
-                            TextButton(onClick = { errorText = null; mode = if (recovery) LockMode.Pin else LockMode.Recovery }) {
-                                Text(if (recovery) "Back to PIN" else "Forgot PIN?")
-                            }
-                        },
-                    )
-                }
+                        }
+                        TextButton(onClick = { errorText = null; mode = LockMode.Recovery }) { Text("Forgot PIN?") }
+                    },
+                )
+                LockMode.Recovery -> RecoveryAnswerPanel(
+                    question = SecurityRepository.question,
+                    lockedOut = lockedOut,
+                    waitText = formatWait(waitMs),
+                    errorText = errorText,
+                    onSubmit = ::handle,
+                    onBack = { errorText = null; mode = LockMode.Pin },
+                )
                 LockMode.Reset -> PinSetupFlow(
-                    askRecovery = true,
+                    askQuestion = false,
                     secretName = "PIN",
                     showDone = false,
-                    intro = "Recovery PIN accepted. Choose a new PIN and a new recovery PIN.",
-                    onFinished = { pin, rec ->
-                        if (SecurityRepository.enable(context, pin, rec!!)) null else "Could not save the new PINs. Try again."
+                    intro = "Answer accepted. Choose a new 4-digit PIN.",
+                    onFinished = { pin, _, _ ->
+                        if (SecurityRepository.changePin(context, pin)) null else "Could not save the new PIN. Try again."
                     },
-                    onDone = {},
+                    onDone = { SecurityRepository.unlock() },
                 )
             }
         }
+    }
+}
+
+/** Shows the saved recovery question and asks for the answer. */
+@Composable
+private fun RecoveryAnswerPanel(
+    question: SecurityQuestion?,
+    lockedOut: Boolean,
+    waitText: String,
+    errorText: String?,
+    onSubmit: (String) -> Unit,
+    onBack: () -> Unit,
+) {
+    var answer by remember { mutableStateOf("") }
+    val canSubmit = question != null && !lockedOut && SecurityRepository.isValidAnswer(answer)
+    fun submit() { if (canSubmit) { onSubmit(answer); answer = "" } }
+
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
+            .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        LockBadge(open = false, icon = Icons.Filled.Key)
+        Spacer(Modifier.height(20.dp))
+        Text("Recovery question", style = MaterialTheme.typography.headlineSmallEmphasized, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        if (question == null) {
+            Text(
+                "No recovery question was set. Unlock with your PIN or fingerprint, then add one in Settings > Security.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        } else {
+            Text(question.text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(20.dp))
+            OutlinedTextField(
+                value = answer,
+                onValueChange = { answer = it },
+                label = { Text("Your answer") },
+                singleLine = true,
+                enabled = !lockedOut,
+                isError = errorText != null,
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            val message = if (lockedOut) "Try again in $waitText" else errorText
+            Text(
+                message ?: "Spelling and capital letters do not matter.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (message != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text("Continue") }
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onBack) { Text("Back to PIN") }
+    }
+}
+
+/** Pick one of the preset questions and type the answer. Used when turning the lock on and when changing it. */
+@Composable
+internal fun QuestionPanel(
+    title: String,
+    subtitle: String,
+    onSubmit: (SecurityQuestion, String) -> Unit,
+    modifier: Modifier = Modifier,
+    errorText: String? = null,
+    buttonText: String = "Save",
+) {
+    var selected by remember { mutableStateOf<SecurityQuestion?>(null) }
+    var answer by remember { mutableStateOf("") }
+    val canSave = selected != null && SecurityRepository.isValidAnswer(answer)
+    fun save() { val q = selected; if (q != null && canSave) onSubmit(q, answer) }
+
+    Column(
+        modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
+            .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmallEmphasized)
+        Spacer(Modifier.height(6.dp))
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        SecurityQuestion.entries.forEach { q ->
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .selectable(selected = q == selected, role = Role.RadioButton, onClick = { selected = q })
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = q == selected, onClick = null, modifier = Modifier.padding(horizontal = 8.dp))
+                Text(q.text, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = answer,
+            onValueChange = { answer = it },
+            label = { Text("Your answer") },
+            supportingText = { Text("At least ${SecurityRepository.MIN_ANSWER_LENGTH} characters. Capital letters do not matter.") },
+            singleLine = true,
+            enabled = selected != null,
+            isError = errorText != null,
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (errorText != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(errorText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = ::save, enabled = canSave, modifier = Modifier.fillMaxWidth()) { Text(buttonText) }
     }
 }
 
@@ -327,20 +461,20 @@ fun LockScreen(modifier: Modifier = Modifier) {
 //  Setup / change flow
 // ─────────────────────────────────────────────────────────────────────────
 
-private enum class SetupStep { Create, Confirm, CreateRecovery, ConfirmRecovery, Done }
+private enum class SetupStep { Create, Confirm, Question, Done }
 
 /**
- * Create -> confirm -> (create recovery -> confirm recovery) -> done.
+ * Create PIN -> confirm -> (choose recovery question + answer) -> done.
  *
- * @param askRecovery true when turning the lock on (or resetting both PINs).
- * @param secretName "PIN" or "recovery PIN" for the single-secret changes.
+ * @param askQuestion true when turning the lock on.
+ * @param secretName shown in the titles, normally "PIN".
  * @param onFinished saves the result; return null on success or an error message to restart the flow.
- * @param showDone shows the closing "You're protected" page before calling [onDone].
+ * @param showDone shows the closing page before calling [onDone].
  */
 @Composable
 fun PinSetupFlow(
-    askRecovery: Boolean,
-    onFinished: (pin: String, recovery: String?) -> String?,
+    askQuestion: Boolean,
+    onFinished: (pin: String, question: SecurityQuestion?, answer: String?) -> String?,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
     secretName: String = "PIN",
@@ -350,17 +484,16 @@ fun PinSetupFlow(
     var step by remember { mutableStateOf(SetupStep.Create) }
     var first by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
-    var recoveryFirst by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var errorKey by remember { mutableIntStateOf(0) }
 
     fun fail(msg: String, restart: SetupStep? = null) {
         error = msg; errorKey++
-        if (restart != null) { step = restart; first = ""; recoveryFirst = "" }
+        if (restart != null) { step = restart; first = "" }
     }
 
-    fun finish(rec: String?) {
-        val result = onFinished(pin, rec)
+    fun finish(q: SecurityQuestion?, a: String?) {
+        val result = onFinished(pin, q, a)
         if (result != null) fail(result, SetupStep.Create)
         else if (showDone) step = SetupStep.Done else onDone()
     }
@@ -380,8 +513,8 @@ fun PinSetupFlow(
             when (s) {
                 SetupStep.Create -> PinEntryPanel(
                     title = "Create $secretName",
-                    subtitle = intro ?: "Choose ${SecurityRepository.MIN_LENGTH} to ${SecurityRepository.MAX_LENGTH} digits.",
-                    errorText = error, errorKey = errorKey, autoSubmitAtMax = false,
+                    subtitle = intro ?: "Choose ${SecurityRepository.MAX_LENGTH} digits.",
+                    errorText = error, errorKey = errorKey,
                     onSubmit = { v ->
                         if (SecurityRepository.isTooSimple(v)) fail("Too easy to guess. Avoid 1234 or 0000.")
                         else { error = null; first = v; step = SetupStep.Confirm }
@@ -390,44 +523,30 @@ fun PinSetupFlow(
                 SetupStep.Confirm -> PinEntryPanel(
                     title = "Confirm $secretName",
                     subtitle = "Enter the same digits again.",
-                    errorText = error, errorKey = errorKey, autoSubmitAtMax = false,
+                    errorText = error, errorKey = errorKey,
                     onSubmit = { v ->
                         if (v != first) fail("Those did not match. Try again.", SetupStep.Create)
                         else {
                             error = null; pin = v
-                            if (askRecovery) step = SetupStep.CreateRecovery else finish(null)
+                            if (askQuestion) step = SetupStep.Question else finish(null, null)
                         }
                     },
                 )
-                SetupStep.CreateRecovery -> PinEntryPanel(
-                    title = "Create recovery PIN",
-                    subtitle = "A second PIN, different from the first. It is the only way back in if you forget your PIN.",
-                    errorText = error, errorKey = errorKey, autoSubmitAtMax = false,
-                    onSubmit = { v ->
-                        when {
-                            v == pin -> fail("The recovery PIN must be different from your PIN.")
-                            SecurityRepository.isTooSimple(v) -> fail("Too easy to guess. Avoid 1234 or 0000.")
-                            else -> { error = null; recoveryFirst = v; step = SetupStep.ConfirmRecovery }
-                        }
-                    },
+                SetupStep.Question -> QuestionPanel(
+                    title = "Recovery question",
+                    subtitle = "If you forget your PIN, you will be asked this question. Pick one only you can answer.",
+                    errorText = error,
+                    buttonText = "Turn on lock",
+                    onSubmit = { q, a -> error = null; finish(q, a) },
                 )
-                SetupStep.ConfirmRecovery -> PinEntryPanel(
-                    title = "Confirm recovery PIN",
-                    subtitle = "Enter the recovery PIN once more.",
-                    errorText = error, errorKey = errorKey, autoSubmitAtMax = false,
-                    onSubmit = { v ->
-                        if (v != recoveryFirst) fail("Those did not match. Try again.", SetupStep.CreateRecovery)
-                        else { error = null; finish(v) }
-                    },
-                )
-                SetupStep.Done -> DonePage(askRecovery = askRecovery, onDone = onDone)
+                SetupStep.Done -> DonePage(askQuestion = askQuestion, onDone = onDone)
             }
         }
     }
 }
 
 @Composable
-private fun DonePage(askRecovery: Boolean, onDone: () -> Unit) {
+private fun DonePage(askQuestion: Boolean, onDone: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(24.dp),
@@ -437,13 +556,13 @@ private fun DonePage(askRecovery: Boolean, onDone: () -> Unit) {
         LockBadge(open = true, icon = Icons.Filled.Check)
         Spacer(Modifier.height(24.dp))
         Text(
-            if (askRecovery) "App lock is on" else "PIN updated",
+            if (askQuestion) "App lock is on" else "PIN updated",
             style = MaterialTheme.typography.headlineSmallEmphasized,
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            if (askRecovery) {
-                "Nobody can read your PIN or recovery PIN, not even us. If you forget both, the only way back in is to clear the app's data, which erases everything not backed up."
+            if (askQuestion) {
+                "If you forget your PIN, tap \"Forgot PIN?\" and answer your recovery question. If you forget both, the only way back in is to clear the app's data, which erases everything not backed up."
             } else {
                 "Use the new one next time the app asks."
             },
