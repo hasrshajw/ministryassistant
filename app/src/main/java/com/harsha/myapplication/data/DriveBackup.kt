@@ -2,12 +2,12 @@ package com.harsha.myapplication.data
 
 import android.content.Context
 import android.content.Intent
+import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
-import com.google.android.gms.auth.GoogleAuthUtil
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -17,6 +17,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 /**
@@ -127,8 +128,9 @@ object DriveBackup {
 
     private fun findBackupFileId(token: String): String? {
         val q = "name = '$BACKUP_NAME' and 'appDataFolder' in parents and trashed = false"
+        val encoded = URLEncoder.encode(q, StandardCharsets.UTF_8.name())
         val url = URL(
-            "$DRIVE_API/files?spaces=appDataFolder&q=${java.net.URLEncoder.encode(q, \"UTF-8\")}&fields=files(id,name)&pageSize=1"
+            "$DRIVE_API/files?spaces=appDataFolder&q=$encoded&fields=files(id,name)&pageSize=1"
         )
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
