@@ -2,8 +2,14 @@
 
 package com.harsha.myapplication.ui.bible
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.compose.material.icons.filled.Refresh
+import androidx.core.content.ContextCompat
+import com.harsha.myapplication.scripture.BibleDownloads
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +29,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.outlined.Book
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
@@ -85,15 +92,9 @@ private val CardRadius = 28.dp          // = Settings GroupOuter
 private val GroupInner = 4.dp
 private val GroupGap = 2.dp
 
-/** Demo catalogue for the "Available to download" section (nothing is really downloaded). */
-private data class DemoBible(val name: String, val nativeName: String, val size: String)
-
-private val demoBibles = listOf(
-    DemoBible("Hindi", "हिन्दी", "4.2 MB"),
-    DemoBible("Tamil", "தமிழ்", "4.6 MB"),
-)
-
-private enum class DownloadPhase { Idle, Downloading, Done }
+// The downloadable Bibles (English, Telugu) live in BibleDownloads.catalog. The download and
+// import run there, outside this screen, so they continue when the user leaves it.
+private enum class DownloadPhase { Idle, Downloading, Importing, Failed, Done }
 
 private const val JW_BIBLE_URL = "https://www.jw.org/en/library/bible/"
 
@@ -230,6 +231,12 @@ fun ImportBibleScreen(
     val importedBibles = remember(refreshKey, dataVersion) { BibleData.importedBibles }
     val activeName = remember(refreshKey, dataVersion) { BibleData.currentTranslationName }
 
+    // Catalog Bibles (English, Telugu) are managed inside "Available to download"; the
+    // "Imported Bibles" list only shows Bibles the user imported from a file.
+    val customBibles = remember(importedBibles) {
+        importedBibles.filter { bible -> BibleDownloads.catalog.none { it.language == bible.name } }
+    }
+
     // Play the exit animation before actually removing the row from storage.
     var removing by remember { mutableStateOf<String?>(null) }
 
@@ -240,6 +247,31 @@ fun ImportBibleScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Messages from background downloads ("English Bible imported", failures) while this screen is open.
+    LaunchedEffect(Unit) {
+        BibleDownloads.events.collect { message ->
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            refreshKey++
+            snackbarHostState.currentSnackbarData?.dismiss()
+            launch { snackbarHostState.showSnackbar(message) }
+        }
+    }
+
+    // Android 13+: ask once so the progress notification can be shown. The download itself
+    // does not depend on the answer.
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    val startDownload: (BibleDownloads.Source) -> Unit = { source ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        BibleDownloads.start(context, source)
+    }
 
     var showGuide by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
@@ -310,7 +342,20 @@ fun ImportBibleScreen(
                 TextButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        removing = name
+                        if (BibleDownloads.catalog.any { it.language == name }) {
+                            // Catalog rows have no exit animation: remove right away.
+                            BibleData.removeBible(name)
+                            refreshKey++
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar(
+                                    "$name Bible removed",
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                        } else {
+                            removing = name
+                        }
                         pendingDelete = null
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
@@ -371,32 +416,30 @@ fun ImportBibleScreen(
 
             Spacer(Modifier.height(SectionGap))
 
-            // ---------------------------------------------------------- available to download (demo)
-            // Phase lives in remember (not saved): leaving and reopening the screen resets to the
-            // default un-downloaded view, and nothing here touches the imported list.
+            // ---------------------------------------------------------- available to download
+            // Real downloads. State lives in BibleDownloads (not in this screen), so progress is
+            // still there when you come back, and a finished download is imported automatically.
             Column(Modifier.revealOnEnter(index = 2, playOnceKey = "import-bible-available")) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SectionHeader("Available to download", Modifier.weight(1f))
-                    Text(
-                        "Demo",
-                        style = typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-                }
+                SectionHeader("Available to download")
                 Spacer(Modifier.height(10.dp))
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(GroupGap)) {
-                    demoBibles.forEachIndexed { index, bible ->
+                    BibleDownloads.catalog.forEachIndexed { index, source ->
                         DownloadableBibleRow(
-                            bible = bible,
+                            source = source,
+                            imported = importedBibles.any { it.name == source.language },
+                            isActive = activeName == source.language,
+                            state = BibleDownloads.states[source.id],
                             index = index,
-                            count = demoBibles.size,
-                            onFinished = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                scope.launch {
-                                    snackbarHostState.currentSnackbarData?.dismiss()
-                                    snackbarHostState.showSnackbar("${bible.name} Bible downloaded")
-                                }
+                            count = BibleDownloads.catalog.size,
+                            onStart = { startDownload(source) },
+                            onSelect = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                BibleData.setActiveBible(source.language)
+                                refreshKey++
+                            },
+                            onDelete = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                pendingDelete = source.language
                             }
                         )
                     }
@@ -406,12 +449,12 @@ fun ImportBibleScreen(
             Spacer(Modifier.height(SectionGap))
 
             // ---------------------------------------------------------- imported list
-            if (importedBibles.isNotEmpty()) {
+            if (customBibles.isNotEmpty()) {
                 Column(Modifier.revealOnEnter(index = 3, playOnceKey = "import-bible-list")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SectionHeader("Imported Bibles", Modifier.weight(1f))
                         Text(
-                            "${importedBibles.size} Bible${if (importedBibles.size == 1) "" else "s"}",
+                            "${customBibles.size} Bible${if (customBibles.size == 1) "" else "s"}",
                             style = typography.labelMedium,
                             color = colors.onSurfaceVariant,
                             modifier = Modifier.padding(end = 4.dp)
@@ -420,14 +463,15 @@ fun ImportBibleScreen(
                     Spacer(Modifier.height(10.dp))
 
                     Column(Modifier.fillMaxWidth()) {
-                        importedBibles.forEachIndexed { index, bible ->
+                        customBibles.forEachIndexed { index, bible ->
                             key(bible.name) {
                                 ImportedBibleRow(
                                     name = bible.name,
                                     verseCount = bible.verses.size,
                                     isActive = bible.name == activeName,
                                     removing = removing == bible.name,
-                                    shape = groupShape(index, importedBibles.size),
+                                    index = index,
+                                    count = customBibles.size,
                                     onClick = {
                                         BibleData.setActiveBible(bible.name)
                                         refreshKey++
@@ -454,7 +498,7 @@ fun ImportBibleScreen(
                         }
                     }
                 }
-            } else if (!importing) {
+            } else if (!importing && importedBibles.isEmpty()) {
                 EmptyBibles()
             }
         }
@@ -659,27 +703,46 @@ private fun DownloadHelpButtons(
 }
 
 /**
- * Demo download row. Idle: download icon. Tap: ring fills with a percentage while the tile
- * spins. Done: check mark replaces the icon and the row says "Downloaded". The phase is plain
- * `remember`, so it is NOT stored and NOT added to Imported Bibles; reopening the screen shows
- * the default un-downloaded view again.
+ * Download row for a real Bible. Idle: download button. Tap: the download starts in
+ * [BibleDownloads] (a foreground service keeps it alive), the ring shows the percentage, a wavy
+ * line fills underneath and the tile spins. Then "Importing…" and the Bible is added to Imported
+ * Bibles automatically, even if the user has left this screen. Done: check mark.
+ * Failed: retry button.
  */
 @Composable
 private fun DownloadableBibleRow(
-    bible: DemoBible,
+    source: BibleDownloads.Source,
+    imported: Boolean,
+    isActive: Boolean,
+    state: BibleDownloads.State?,
     index: Int,
     count: Int,
-    onFinished: () -> Unit
+    onStart: () -> Unit,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
-    val scope = rememberCoroutineScope()
 
-    var phase by remember { mutableStateOf(DownloadPhase.Idle) }
-    val progress = remember { Animatable(0f) }
+    val phase = when {
+        imported -> DownloadPhase.Done
+        state is BibleDownloads.State.Downloading -> DownloadPhase.Downloading
+        state is BibleDownloads.State.Importing -> DownloadPhase.Importing
+        state is BibleDownloads.State.Failed -> DownloadPhase.Failed
+        else -> DownloadPhase.Idle
+    }
+    val busy = phase == DownloadPhase.Downloading || phase == DownloadPhase.Importing
+    val rawProgress = (state as? BibleDownloads.State.Downloading)?.progress ?: -1f
+    val determinate = phase == DownloadPhase.Downloading && rawProgress >= 0f
+    val progress by animateFloatAsState(
+        targetValue = rawProgress.coerceIn(0f, 1f),
+        animationSpec = tween(250, easing = LinearEasing),
+        label = "dlProgress"
+    )
+    val percent = (progress * 100).toInt()
 
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     val shape = rememberGroupShape(index, count, if (pressed) 20.dp else GroupInner)
 
     val tileShape = MaterialShapes.Cookie9Sided.toShape()
@@ -689,45 +752,34 @@ private fun DownloadableBibleRow(
         animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing), RepeatMode.Restart),
         label = "dlSpinAngle"
     )
+    val highlighted = phase == DownloadPhase.Done && isActive
     val tileColor by animateColorAsState(
-        if (phase == DownloadPhase.Done) colors.primary else colors.secondaryContainer,
+        if (highlighted) colors.primary else colors.secondaryContainer,
         animationSpec = spring(dampingRatio = 1f, stiffness = 1600f),
         label = "dlTile"
     )
     val tileContent by animateColorAsState(
-        if (phase == DownloadPhase.Done) colors.onPrimary else colors.onSecondaryContainer,
+        if (highlighted) colors.onPrimary else colors.onSecondaryContainer,
         animationSpec = spring(dampingRatio = 1f, stiffness = 1600f),
         label = "dlTileContent"
     )
 
-    fun start() {
-        if (phase != DownloadPhase.Idle) return
-        phase = DownloadPhase.Downloading
-        scope.launch {
-            progress.snapTo(0f)
-            progress.animateTo(1f, tween(2800, easing = FastOutSlowInEasing))
-            phase = DownloadPhase.Done
-            onFinished()
-        }
-    }
-
-    val percent = (progress.value * 100).toInt()
-
     Surface(
-        onClick = ::start,
-        enabled = phase == DownloadPhase.Idle,
-        interactionSource = source,
+        // Idle / Failed: start the download. Downloaded: tapping the row selects the Bible.
+        onClick = if (phase == DownloadPhase.Done) onSelect else onStart,
+        enabled = !busy,
+        interactionSource = interaction,
         shape = shape,
         color = colors.surfaceContainerLow,
         modifier = Modifier
             .fillMaxWidth()
-            .pressScale(source, pressedScale = 0.97f)
+            .pressScale(interaction, pressedScale = 0.97f)
     ) {
         Column {
             ListItem(
                 headlineContent = {
                     Text(
-                        bible.nativeName,
+                        source.nativeName ?: source.language,
                         style = typography.titleMediumEmphasized,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -736,12 +788,20 @@ private fun DownloadableBibleRow(
                 supportingContent = {
                     Text(
                         when (phase) {
-                            DownloadPhase.Idle -> "${bible.name} · ${bible.size}"
-                            DownloadPhase.Downloading -> "Downloading… $percent%"
-                            DownloadPhase.Done -> "${bible.name} · Downloaded"
+                            DownloadPhase.Idle -> "${source.language} · ${source.subtitle}"
+                            DownloadPhase.Downloading ->
+                                if (determinate) "Downloading… $percent%" else "Downloading…"
+                            DownloadPhase.Importing -> "Importing… this may take a moment"
+                            DownloadPhase.Failed -> "Failed · tap to retry"
+                            DownloadPhase.Done ->
+                                if (isActive) "${source.language} · Active" else "${source.language} · Downloaded"
                         },
                         style = typography.bodyMedium,
-                        color = if (phase == DownloadPhase.Done) colors.primary else colors.onSurfaceVariant,
+                        color = when (phase) {
+                            DownloadPhase.Done -> if (isActive) colors.primary else colors.onSurfaceVariant
+                            DownloadPhase.Failed -> colors.error
+                            else -> colors.onSurfaceVariant
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -751,10 +811,10 @@ private fun DownloadableBibleRow(
                         shape = tileShape,
                         container = tileColor,
                         size = 44.dp,
-                        rotation = if (phase == DownloadPhase.Downloading) spin else 0f
+                        rotation = if (busy) spin else 0f
                     ) {
                         Icon(
-                            Icons.AutoMirrored.Outlined.MenuBook,
+                            Icons.Outlined.Book,
                             contentDescription = null,
                             tint = tileContent,
                             modifier = Modifier.size(22.dp)
@@ -766,48 +826,68 @@ private fun DownloadableBibleRow(
                         targetState = phase,
                         transitionSpec = {
                             (fadeIn(Motion.effectsDefault) + scaleIn(Motion.spatialFast, initialScale = 0.4f)) togetherWith
-                                    (fadeOut(Motion.effectsFast) + scaleOut(targetScale = 0.4f))
+                                (fadeOut(Motion.effectsFast) + scaleOut(targetScale = 0.4f))
                         },
                         label = "dlTrailing"
                     ) { p ->
-                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp), contentAlignment = Alignment.Center) {
                             when (p) {
-                                DownloadPhase.Idle -> FilledTonalIconButton(onClick = ::start) {
+                                // Same "Get" button as the setup screen.
+                                DownloadPhase.Idle -> FilledTonalButton(
+                                    onClick = onStart,
+                                    contentPadding = PaddingValues(horizontal = 14.dp)
+                                ) {
                                     Icon(
                                         Icons.Default.Download,
-                                        contentDescription = "Download ${bible.name} Bible"
+                                        contentDescription = "Download ${source.language} Bible",
+                                        modifier = Modifier.size(18.dp)
                                     )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Get")
                                 }
 
                                 DownloadPhase.Downloading -> {
-                                    CircularProgressIndicator(
-                                        progress = { progress.value },
-                                        modifier = Modifier.size(44.dp),
-                                        strokeWidth = 4.dp,
-                                        trackColor = colors.secondaryContainer
-                                    )
-                                    Text(
-                                        "$percent",
-                                        style = typography.labelSmallEmphasized,
-                                        color = colors.onSurface
-                                    )
-                                }
-
-                                // Downloaded: the download icon is simply gone, replaced by a check.
-                                DownloadPhase.Done -> Surface(
-                                    shape = CircleShape,
-                                    color = colors.primary,
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = "Downloaded",
-                                            tint = colors.onPrimary,
-                                            modifier = Modifier.size(20.dp)
+                                    if (determinate) {
+                                        CircularProgressIndicator(
+                                            progress = { progress },
+                                            modifier = Modifier.size(44.dp),
+                                            strokeWidth = 4.dp,
+                                            trackColor = colors.secondaryContainer
+                                        )
+                                        Text(
+                                            "$percent",
+                                            style = typography.labelSmallEmphasized,
+                                            color = colors.onSurface
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(44.dp),
+                                            strokeWidth = 4.dp,
+                                            trackColor = colors.secondaryContainer
                                         )
                                     }
                                 }
+
+                                DownloadPhase.Importing -> CircularProgressIndicator(
+                                    modifier = Modifier.size(44.dp),
+                                    strokeWidth = 4.dp,
+                                    trackColor = colors.secondaryContainer
+                                )
+
+                                DownloadPhase.Failed -> FilledTonalButton(
+                                    onClick = onStart,
+                                    contentPadding = PaddingValues(horizontal = 14.dp)
+                                ) {
+                                    Text("Retry")
+                                }
+
+                                // Downloaded: select + delete buttons replace the download button.
+                                DownloadPhase.Done -> BibleRowActions(
+                                    name = source.language,
+                                    isActive = isActive,
+                                    onSelect = onSelect,
+                                    onDelete = onDelete
+                                )
                             }
                         }
                     }
@@ -816,17 +896,20 @@ private fun DownloadableBibleRow(
                 modifier = Modifier.fillMaxWidth()
             )
             AnimatedVisibility(
-                visible = phase == DownloadPhase.Downloading,
+                visible = busy,
                 enter = fadeIn(Motion.effectsFast) + expandVertically(Motion.spatialDefault<IntSize>()),
                 exit = fadeOut(Motion.effectsFast) + shrinkVertically(Motion.spatialFast<IntSize>())
             ) {
-                LinearProgressIndicator(
-                    progress = { progress.value },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 14.dp)
-                )
+                // Expressive wavy line: determinate while downloading, indeterminate while importing.
+                val barModifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 14.dp)
+                if (determinate) {
+                    LinearWavyProgressIndicator(progress = { progress }, modifier = barModifier)
+                } else {
+                    LinearWavyProgressIndicator(modifier = barModifier)
+                }
             }
         }
     }
@@ -926,13 +1009,30 @@ private fun ImportedBibleRow(
     verseCount: Int,
     isActive: Boolean,
     removing: Boolean,
-    shape: Shape,
+    index: Int,
+    count: Int,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onRemoved: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val shape = rememberGroupShape(index, count, if (pressed) 20.dp else GroupInner)
+
+    val tileShape = MaterialShapes.Cookie9Sided.toShape()
+    val tileColor by animateColorAsState(
+        if (isActive) colors.primary else colors.secondaryContainer,
+        animationSpec = spring(dampingRatio = 1f, stiffness = 1600f),
+        label = "ibTile"
+    )
+    val tileContent by animateColorAsState(
+        if (isActive) colors.onPrimary else colors.onSecondaryContainer,
+        animationSpec = spring(dampingRatio = 1f, stiffness = 1600f),
+        label = "ibTileContent"
+    )
 
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
     LaunchedEffect(removing) { if (removing) visible.targetState = false }
@@ -950,61 +1050,57 @@ private fun ImportedBibleRow(
 
         Surface(
             onClick = onClick,
+            interactionSource = interaction,
             shape = shape,
             color = colors.surfaceContainerLow,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = GroupGap)
+                .pressScale(interaction, pressedScale = 0.97f)
         ) {
             ListItem(
                 headlineContent = {
                     Text(
                         native ?: name,
-                        style = typography.bodyLarge,
-                        fontFamily = Lexend,
-                        fontWeight = FontWeight.Medium,
+                        style = typography.titleMediumEmphasized,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 supportingContent = {
                     Text(
-                        if (native != null) "$name · $verses" else verses,
+                        buildString {
+                            if (isActive) append("Active · ")
+                            if (native != null) append("$name · ")
+                            append(verses)
+                        },
                         style = typography.bodyMedium,
-                        fontFamily = Lexend,
-                        color = colors.onSurfaceVariant,
+                        color = if (isActive) colors.primary else colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 leadingContent = {
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = colors.primary.copy(alpha = 0.12f),
-                        modifier = Modifier.size(40.dp)
+                    ShapeTile(
+                        shape = tileShape,
+                        container = tileColor,
+                        size = 44.dp
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.AutoMirrored.Outlined.MenuBook,
-                                contentDescription = null,
-                                tint = colors.primary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+                        Icon(
+                            Icons.Outlined.Book,
+                            contentDescription = null,
+                            tint = tileContent,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                 },
                 trailingContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ActiveMark(selected = isActive)
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(onClick = onDeleteClick) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Remove $name",
-                                tint = colors.onSurfaceVariant
-                            )
-                        }
-                    }
+                    BibleRowActions(
+                        name = name,
+                        isActive = isActive,
+                        onSelect = onClick,
+                        onDelete = onDeleteClick
+                    )
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 modifier = Modifier.fillMaxWidth()
@@ -1013,38 +1109,54 @@ private fun ImportedBibleRow(
     }
 }
 
-/** Radio-style "active Bible" indicator, identical to the one in Settings. */
+/**
+ * Select + delete buttons shared by downloaded and imported Bibles.
+ * Select is an expressive toggle: tonal while unselected, filled primary with a check when active.
+ * Delete is a tonal error-container button. Both morph their shape while pressed.
+ */
 @Composable
-private fun ActiveMark(selected: Boolean) {
+private fun BibleRowActions(
+    name: String,
+    isActive: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
-    val fill by animateColorAsState(
-        if (selected) colors.primary else Color.Transparent,
-        animationSpec = tween(150),
-        label = "markFill"
-    )
-    val ring by animateColorAsState(
-        if (selected) colors.primary else colors.outline,
-        animationSpec = tween(150),
-        label = "markRing"
-    )
-    Box(
-        modifier = Modifier
-            .size(24.dp)
-            .clip(CircleShape)
-            .background(fill)
-            .border(width = 2.dp, color = ring, shape = CircleShape),
-        contentAlignment = Alignment.Center
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        AnimatedVisibility(
-            visible = selected,
-            enter = scaleIn(tween(150)) + fadeIn(tween(120)),
-            exit = scaleOut(tween(120)) + fadeOut(tween(120))
+        FilledIconToggleButton(
+            checked = isActive,
+            onCheckedChange = { if (!isActive) onSelect() },
+            shapes = IconButtonDefaults.toggleableShapes(),
+            colors = IconButtonDefaults.filledIconToggleButtonColors(
+                containerColor = colors.surfaceContainerHighest,
+                contentColor = colors.onSurfaceVariant,
+                checkedContainerColor = colors.primary,
+                checkedContentColor = colors.onPrimary
+            ),
+            modifier = Modifier.size(40.dp)
         ) {
             Icon(
                 Icons.Default.Check,
-                contentDescription = "Active",
-                tint = colors.onPrimary,
-                modifier = Modifier.size(16.dp)
+                contentDescription = if (isActive) "$name is active" else "Select $name",
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        FilledTonalIconButton(
+            onClick = onDelete,
+            shapes = IconButtonDefaults.shapes(),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = colors.errorContainer,
+                contentColor = colors.onErrorContainer
+            ),
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Remove $name",
+                modifier = Modifier.size(20.dp)
             )
         }
     }

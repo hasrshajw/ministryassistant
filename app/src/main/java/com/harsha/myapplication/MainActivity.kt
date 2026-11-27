@@ -74,6 +74,8 @@ import com.harsha.myapplication.ui.settings.CustomizeAppScreen
 import com.harsha.myapplication.ui.home.DailyTextScreen
 import com.harsha.myapplication.ui.settings.GenZModeScreen
 import com.harsha.myapplication.ui.home.HomeScreen
+import com.harsha.myapplication.ui.home.MonthlyProgressScreen
+import com.harsha.myapplication.data.HoursRepository
 import com.harsha.myapplication.ui.bible.ImportBibleScreen
 import com.harsha.myapplication.ui.notes.NoteEditorView
 import com.harsha.myapplication.ui.notes.NotesScreen
@@ -81,6 +83,11 @@ import com.harsha.myapplication.ui.people.PeopleScreen
 import com.harsha.myapplication.ui.legal.PrivacyScreen
 import com.harsha.myapplication.ui.profile.ProfileScreen
 import com.harsha.myapplication.ui.settings.SettingsScreen
+import com.harsha.myapplication.ui.settings.NotificationSettingsScreen
+import com.harsha.myapplication.ui.settings.BackupScreen
+import com.harsha.myapplication.data.BackupRepository
+import com.harsha.myapplication.data.NotificationPrefsRepository
+import com.harsha.myapplication.data.HomeLayoutRepository
 import com.harsha.myapplication.data.SetupRepository
 import com.harsha.myapplication.ui.setup.SetupWizardScreen
 import com.harsha.myapplication.ui.legal.TermsScreen
@@ -144,7 +151,12 @@ class MainActivity : ComponentActivity() {
         // Load the saved theme BEFORE the first frame so there is no flash of the wrong theme.
         AppearanceRepository.init(applicationContext)
         SetupRepository.init(applicationContext)
+        HoursRepository.init(applicationContext)
+        NotificationPrefsRepository.init(applicationContext)
+        HomeLayoutRepository.init(applicationContext)
         AppNotifications.ensureChannel(applicationContext)
+        BackupRepository.init(applicationContext)
+        BackupRepository.runAutoBackupIfDue(applicationContext)
         enableEdgeToEdge()
         setContent {
             // ---- Appearance settings ----
@@ -173,15 +185,15 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = appearance.dynamicColor,
                 pureBlack = appearance.pureBlack,
             ) {
-                // Wizard -> app: the wizard's final button has already morphed into the Monthly
-                // progress card; the app now rises in with an Expressive spatial spring while the
-                // wizard fades out underneath.
+                // Wizard -> app: a short cross-fade (240ms, with a tiny 96% -> 100% settle).
+                // It used to be a slow spring (stiffness 300 + 500ms hold), which felt laggy while
+                // Home was composing its first frame. Tweens are cheap and always finish on time.
                 AnimatedContent(
                     targetState = SetupRepository.isSetupCompleted,
                     transitionSpec = {
-                        (fadeIn(Motion.effectsSlow) +
-                                scaleIn(Motion.spatialSlow, initialScale = 0.94f)) togetherWith
-                                fadeOut(Motion.effectsDefault)
+                        (fadeIn(tween(240, delayMillis = 40)) +
+                            scaleIn(tween(300), initialScale = 0.96f)) togetherWith
+                            fadeOut(tween(160))
                     },
                     label = "setup_to_main",
                 ) { setupDone ->
@@ -215,7 +227,7 @@ val LocalSetBottomBarHidden = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
 
 // The sub-screens that can appear over the tab content.
 private enum class SubScreen {
-    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy
+    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy, MonthlyProgress, Notifications, Backup
 }
 
 // ---------- Main Scaffold with Bottom Navigation ----------
@@ -238,6 +250,9 @@ fun MainAppScaffold() {
     var showCustomizeApp by rememberSaveable { mutableStateOf(false) }
     var showTerms by rememberSaveable { mutableStateOf(false) }
     var showPrivacy by rememberSaveable { mutableStateOf(false) }
+    var showMonthlyProgress by rememberSaveable { mutableStateOf(false) }
+    var showNotifications by rememberSaveable { mutableStateOf(false) }
+    var showBackup by rememberSaveable { mutableStateOf(false) }
 
     // True while the Notes side menu (push drawer) is open: the bottom bar hides and the notes
     // screen grows into the space it leaves.
@@ -260,6 +275,9 @@ fun MainAppScaffold() {
         showCustomizeApp -> SubScreen.CustomizeApp
         showTerms -> SubScreen.Terms
         showPrivacy -> SubScreen.Privacy
+        showMonthlyProgress -> SubScreen.MonthlyProgress
+        showNotifications -> SubScreen.Notifications
+        showBackup -> SubScreen.Backup
         else -> null
     }
 
@@ -284,6 +302,9 @@ fun MainAppScaffold() {
             SubScreen.CustomizeApp -> showCustomizeApp = false
             SubScreen.Terms -> showTerms = false
             SubScreen.Privacy -> showPrivacy = false
+            SubScreen.MonthlyProgress -> showMonthlyProgress = false
+            SubScreen.Notifications -> showNotifications = false
+            SubScreen.Backup -> showBackup = false
             null -> {}
         }
     }
@@ -334,9 +355,9 @@ fun MainAppScaffold() {
                 AnimatedVisibility(
                     visible = subScreen == null && !notesDrawerOpen && !bottomBarHidden,
                     enter = slideInVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                            fadeIn(Motion.effectsFast),
+                        fadeIn(Motion.effectsFast),
                     exit = slideOutVertically(Motion.spatialDefault<IntOffset>()) { it } +
-                            fadeOut(Motion.effectsFast),
+                        fadeOut(Motion.effectsFast),
                 ) {
                     AppBottomNavBar(
                         currentIndex = selectedScreen,
@@ -405,6 +426,9 @@ fun MainAppScaffold() {
                         showCustomizeApp -> 8
                         showTerms -> 9
                         showPrivacy -> 10
+                        showMonthlyProgress -> 11
+                        showNotifications -> 12
+                        showBackup -> 13
                         else -> 0
                     },
                     transitionSpec = {
@@ -431,6 +455,7 @@ fun MainAppScaffold() {
                                             HomeScreen(
                                                 onNotesTabClick = { selectTab(1) },
                                                 onBibleTabClick = { selectTab(2) },
+                                                onMonthlyProgressClick = { showMonthlyProgress = true },
                                                 onDailyTextClick = { index ->
                                                     selectedDayIndex = index
                                                     showDailyText = true
@@ -468,6 +493,8 @@ fun MainAppScaffold() {
                                                 onOpenCustomizeApp = { showCustomizeApp = true },
                                                 onOpenTerms = { showTerms = true },
                                                 onOpenPrivacy = { showPrivacy = true },
+                                                onOpenNotifications = { showNotifications = true },
+                                                onOpenBackup = { showBackup = true },
                                                 onOpenAbout = { showAbout = true }
                                             )
                                         }
@@ -511,6 +538,9 @@ fun MainAppScaffold() {
                                         8 -> CustomizeAppScreen(onBack = { showCustomizeApp = false })
                                         9 -> TermsScreen(onBack = { showTerms = false })
                                         10 -> PrivacyScreen(onBack = { showPrivacy = false })
+                                        11 -> MonthlyProgressScreen(onBack = { showMonthlyProgress = false })
+                                        12 -> NotificationSettingsScreen(onBack = { showNotifications = false })
+                                        13 -> BackupScreen(onBack = { showBackup = false })
                                     }
                                 }
                             }

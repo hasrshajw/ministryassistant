@@ -130,6 +130,7 @@ fun DailyTextScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .revealOnEnter(index = 2)   // content fades/lifts in while the card is still opening
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(Modifier.height(16.dp))

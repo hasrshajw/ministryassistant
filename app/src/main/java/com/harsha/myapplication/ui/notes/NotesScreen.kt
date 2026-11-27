@@ -4,6 +4,9 @@ package com.harsha.myapplication.ui.notes
 
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -65,6 +68,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -220,7 +225,7 @@ fun NotesScreen(
         if (searchQuery.isBlank()) selectedRows
         else selectedRows.filter {
             it.note.title.contains(searchQuery, ignoreCase = true) ||
-                    it.body.contains(searchQuery, ignoreCase = true)
+                it.body.contains(searchQuery, ignoreCase = true)
         }
     }
     var sort by rememberSaveable { mutableStateOf(NotesSort.Date) }
@@ -233,7 +238,7 @@ fun NotesScreen(
     val screenTitle = when {
         drawerSelection == "uncategorized" -> DEFAULT_CATEGORY
         drawerSelection.startsWith("folder:") -> drawerSelection.removePrefix("folder:")
-        else -> "Notes & Studies"
+        else -> "Notes"
     }
     // Folder to preselect when a new note is started from here.
     val selectedFolderName: String? =
@@ -409,6 +414,9 @@ fun NotesScreen(
                 topBar = {
                     StudyTopBar(
                         title = screenTitle,
+                        // Note count lives under the title; the title itself doesn't move.
+                        subtitle = "${visible.size} note${if (visible.size == 1) "" else "s"}",
+                        keepTitleInPlace = true,
                         scrollBehavior = scrollBehavior,
                     )
                 },
@@ -434,20 +442,14 @@ fun NotesScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .padding(horizontal = 16.dp)
                 ) {
-                    // Header: how many notes are showing
-                    Text(
-                        "${visible.size} note${if (visible.size == 1) "" else "s"}",
-                        style = typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 16.dp),
-                    )
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Search bar + sort button (same components as the People screen)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                             .revealOnEnter(index = 0, playOnceKey = "notes-search"),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -470,30 +472,76 @@ fun NotesScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Folder pills: tap to switch folder; the first pill opens the full side menu.
+                    // Left: a pinned "Folders" button that opens the side menu (a navigation action,
+                    // so it is a squarer, outlined-free button with a chevron and stays put).
+                    // Right: the scrolling folder filter pills. A divider separates the two so the
+                    // button is not mistaken for another filter.
+                    // Scroll state is hoisted so the button can shrink to icon-only once the
+                    // pills are swiped away from their start position.
+                    val pillScroll = rememberScrollState()
+                    // Collapsing the button widens the pill viewport by roughly the label + chevron
+                    // width. If the pills only overflow by less than that, collapsing makes them fit
+                    // entirely, the scroll snaps back to 0, the button re-expands, and the pills
+                    // flicker with an empty gap on the right. So: only collapse when there is enough
+                    // overflow to survive the widening, and stay collapsed (latched) until the pills
+                    // are scrolled back to the start.
+                    val collapseWidthPx = with(density) { 96.dp.toPx() }
+                    var foldersCollapsed by remember { mutableStateOf(false) }
+                    LaunchedEffect(pillScroll, collapseWidthPx) {
+                        snapshotFlow { pillScroll.value to pillScroll.maxValue }
+                            .collect { (value, max) ->
+                                if (!foldersCollapsed) {
+                                    if (value > 0 && max > collapseWidthPx) foldersCollapsed = true
+                                } else if (value == 0) {
+                                    foldersCollapsed = false
+                                }
+                            }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
+                            .padding(start = 16.dp)
                             .revealOnEnter(index = 1, playOnceKey = "notes-actions"),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        FoldersMenuPill(
+                        FoldersMenuButton(
+                            collapsed = foldersCollapsed,
                             onClick = {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 setDrawer(true)
                             }
                         )
-                        pillEntries.forEach { entry ->
-                            NotesPill(
-                                label = entry.label,
-                                count = entry.count,
-                                selected = drawerSelection == entry.key,
-                                onClick = {
-                                    drawerSelection = entry.key
-                                    entry.folder?.let(onFolderClick)
-                                },
-                            )
+                        // Tight spacing around the divider while the button is just an icon.
+                        val dividerGap by animateDpAsState(
+                            if (foldersCollapsed) 6.dp else 12.dp,
+                            MaterialTheme.motionScheme.fastSpatialSpec(),
+                            label = "dividerGap",
+                        )
+                        Box(
+                            Modifier
+                                .padding(horizontal = dividerGap)
+                                .width(1.dp)
+                                .height(24.dp)
+                                .background(colors.outlineVariant)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(pillScroll)
+                                .padding(end = 16.dp),   // last pill stops 16dp from the edge, but scrolls right up to it
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            pillEntries.forEach { entry ->
+                                NotesPill(
+                                    label = entry.label,
+                                    count = entry.count,
+                                    selected = drawerSelection == entry.key,
+                                    onClick = {
+                                        drawerSelection = entry.key
+                                        entry.folder?.let(onFolderClick)
+                                    },
+                                )
+                            }
                         }
                     }
 
@@ -509,6 +557,7 @@ fun NotesScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                             .weight(1f),
                         label = "notesEmptyState"
                     ) { isEmpty ->
@@ -750,32 +799,57 @@ private fun NoteCard(
     }
 }
 
-/** Opens the full side menu (folders, events, new folder). */
+/**
+ * Opens the full side menu (folders, events, new folder).
+ * Deliberately NOT pill-shaped like the filter pills: a 12dp rounded square in a neutral
+ * container, folder icon + label + chevron, so it reads as "go to folders", not as a filter.
+ */
 @Composable
-private fun FoldersMenuPill(onClick: () -> Unit) {
+private fun FoldersMenuButton(collapsed: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
+    // 18dp icon + 11dp each side = a 40dp square when collapsed (icon centred).
+    val startPad by animateDpAsState(if (collapsed) 11.dp else 12.dp, MaterialTheme.motionScheme.fastSpatialSpec(), label = "foldersStartPad")
+    val endPad by animateDpAsState(if (collapsed) 11.dp else 8.dp, MaterialTheme.motionScheme.fastSpatialSpec(), label = "foldersEndPad")
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val corner by animateDpAsState(
-        if (pressed) 14.dp else 20.dp,
+        if (pressed) 20.dp else 12.dp,
         MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "foldersPillCorner",
+        label = "foldersButtonCorner",
     )
     Surface(
         onClick = onClick,
-        modifier = Modifier.height(40.dp),
+        modifier = Modifier
+            .height(40.dp)
+            .semantics { contentDescription = "Open folders menu" },
         shape = RoundedCornerShape(corner),
-        color = colors.secondaryContainer,
-        contentColor = colors.onSecondaryContainer,
+        color = colors.surfaceContainerHighest,
+        contentColor = colors.onSurface,
         interactionSource = interaction,
     ) {
         Row(
-            Modifier.padding(horizontal = 14.dp),
+            Modifier.padding(start = startPad, end = endPad),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("Folders", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
+            // Label + chevron slide away while the filter pills are scrolled.
+            AnimatedVisibility(
+                visible = !collapsed,
+                enter = expandHorizontally() + fadeIn(Motion.effectsDefault),
+                exit = shrinkHorizontally() + fadeOut(Motion.effectsDefault),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("Folders", style = MaterialTheme.typography.labelLargeEmphasized, maxLines = 1)
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = colors.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }

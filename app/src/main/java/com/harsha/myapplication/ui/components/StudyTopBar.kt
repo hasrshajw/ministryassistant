@@ -8,10 +8,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
@@ -24,6 +27,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,6 +53,9 @@ fun StudyTopBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     collapsing: Boolean = false,
+    // true: the title stays exactly where it is without a subtitle; the subtitle hangs just below it
+    // instead of pushing the title up (compact bar only).
+    keepTitleInPlace: Boolean = false,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
     scrollBehavior: TopAppBarScrollBehavior? = null,
@@ -80,25 +87,30 @@ fun StudyTopBar(
     } else {
         TopAppBar(
             title = {
-                Column {
-                    BarTitle(title)
-                    AnimatedVisibility(
-                        visible = subtitle != null,
-                        enter = expandVertically(Motion.spatialDefault()) + fadeIn(spring(1f, 1600f)),
-                        exit = shrinkVertically(Motion.spatialDefault()) + fadeOut(spring(1f, 1600f)),
-                    ) {
-                        AnimatedContent(
-                            targetState = subtitle.orEmpty(),
-                            transitionSpec = { fadeIn(spring(1f, 1600f)) togetherWith fadeOut(spring(1f, 1600f)) },
-                            label = "barSubtitle",
-                        ) { text ->
-                            Text(
-                                text,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                if (keepTitleInPlace) {
+                    Box {
+                        BarTitle(title)
+                        AnimatedVisibility(
+                            visible = subtitle != null,
+                            enter = fadeIn(spring(1f, 1600f)),
+                            exit = fadeOut(spring(1f, 1600f)),
+                            // Not counted in the title's height, so the title keeps its position.
+                            modifier = Modifier
+                                .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                .offset(y = 26.dp),
+                        ) {
+                            BarSubtitle(subtitle.orEmpty())
+                        }
+                    }
+                } else {
+                    Column {
+                        BarTitle(title)
+                        AnimatedVisibility(
+                            visible = subtitle != null,
+                            enter = expandVertically(Motion.spatialDefault()) + fadeIn(spring(1f, 1600f)),
+                            exit = shrinkVertically(Motion.spatialDefault()) + fadeOut(spring(1f, 1600f)),
+                        ) {
+                            BarSubtitle(subtitle.orEmpty())
                         }
                     }
                 }
@@ -109,6 +121,24 @@ fun StudyTopBar(
             windowInsets = windowInsets,
             colors = barColors,
             scrollBehavior = scrollBehavior,
+        )
+    }
+}
+
+/** Small subtitle line under the title; cross-fades when the text changes. */
+@Composable
+private fun BarSubtitle(subtitle: String) {
+    AnimatedContent(
+        targetState = subtitle,
+        transitionSpec = { fadeIn(spring(1f, 1600f)) togetherWith fadeOut(spring(1f, 1600f)) },
+        label = "barSubtitle",
+    ) { text ->
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

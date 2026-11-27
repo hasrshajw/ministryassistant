@@ -1,7 +1,7 @@
 /**
  * Ministry Assistant — Setup Wizard (Material 3 Expressive)
  *
- * 3 focused steps:  Welcome  →  Notifications  →  Monthly goal
+ * 5 focused steps:  Welcome  →  Notifications  →  Bible download  →  Monthly goal  →  Color palette
  *
  * Motion comes from ui/theme/Motion.kt (spatial / effects springs, MotionTransitions,
  * revealOnEnter, pressScale), shapes from MaterialShapes + AppShapes, type from Lexend Typography.
@@ -43,6 +43,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -57,7 +58,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,6 +72,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,6 +84,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.Notifications
@@ -85,6 +93,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -98,6 +107,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -116,6 +127,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -125,6 +137,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
@@ -144,6 +161,9 @@ import com.harsha.myapplication.ui.components.ExpressiveBackButton
 import com.harsha.myapplication.ui.theme.AppearanceRepository
 import com.harsha.myapplication.ui.theme.Motion
 import com.harsha.myapplication.ui.theme.MotionTransitions
+import com.harsha.myapplication.ui.theme.PaletteColors
+import com.harsha.myapplication.ui.theme.ThemePalette
+import com.harsha.myapplication.ui.theme.paletteColorScheme
 import com.harsha.myapplication.ui.theme.StudyDeepGreen
 import com.harsha.myapplication.ui.theme.StudyDeepGreenDarkMode
 import com.harsha.myapplication.ui.theme.StudyEmerald
@@ -152,6 +172,8 @@ import com.harsha.myapplication.ui.theme.pressScale
 import com.harsha.myapplication.ui.theme.revealOnEnter
 import com.harsha.myapplication.notifications.AppNotifications
 import com.harsha.myapplication.data.SetupRepository
+import com.harsha.myapplication.scripture.BibleData
+import com.harsha.myapplication.scripture.BibleDownloads
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -166,8 +188,10 @@ import kotlin.math.roundToInt
 
 private const val STEP_WELCOME = 0
 private const val STEP_NOTIFICATIONS = 1
-private const val STEP_GOAL = 2
-private const val STEP_COUNT = 3
+private const val STEP_BIBLE = 2
+private const val STEP_GOAL = 3
+private const val STEP_PALETTE = 4
+private const val STEP_COUNT = 5
 
 private const val GOAL_MIN = 1
 private const val GOAL_MAX = 300
@@ -218,7 +242,7 @@ fun SetupWizardScreen(
 
     var currentStep by rememberSaveable { mutableIntStateOf(STEP_WELCOME) }
     var monthlyGoal by rememberSaveable { mutableIntStateOf(SetupRepository.monthlyGoalHours) }
-    // True from the tap on "Start using the app" until the wizard hands over to Home.
+    // True from the tap on "Start using the app" until the wizard hands over to Home (blocks double taps).
     var finishing by remember { mutableStateOf(false) }
 
     // areNotificationsEnabled() covers BOTH the runtime permission and the system switch.
@@ -254,7 +278,7 @@ fun SetupWizardScreen(
     }
 
     BackHandler(enabled = currentStep > STEP_WELCOME && !finishing) { currentStep-- }
-    BackHandler(enabled = finishing) { /* ignore back while the card morph plays */ }
+    BackHandler(enabled = finishing) { /* ignore back while handing over to Home */ }
 
     Box(
         modifier = modifier
@@ -307,6 +331,10 @@ fun SetupWizardScreen(
                                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         },
+                        onContinue = { currentStep = STEP_BIBLE },
+                    )
+
+                    STEP_BIBLE -> BibleStep(
                         onContinue = { currentStep = STEP_GOAL },
                     )
 
@@ -319,16 +347,20 @@ fun SetupWizardScreen(
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                         },
+                        onContinue = { currentStep = STEP_PALETTE },
+                    )
+
+                    STEP_PALETTE -> PaletteStep(
                         finishing = finishing,
-                        onFinishClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            finishing = true
-                        },
-                        // Runs after the button has morphed into the Monthly progress card.
-                        onMorphDone = {
-                            SetupRepository.setMonthlyGoal(context, monthlyGoal)
-                            onGoalChosen(monthlyGoal)
-                            onFinished()
+                        onFinish = {
+                            if (!finishing) {
+                                finishing = true
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                SetupRepository.setMonthlyGoal(context, monthlyGoal)
+                                onGoalChosen(monthlyGoal)
+                                // MainActivity cross-fades the wizard into Home (short tween, no spring).
+                                onFinished()
+                            }
                         },
                     )
                 }
@@ -561,39 +593,8 @@ private fun NotificationsStep(
             modifier = Modifier.revealOnEnter(3)
         )
 
-        // ── What you'll get: one connected group, outer corners round, inner corners tight ──
-        Spacer(Modifier.height(24.dp))
-        val outer = 28.dp
-        val inner = 6.dp
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            NotificationFeatureRow(
-                icon = Icons.Default.Person,
-                title = "Return visits",
-                description = "Reminded on the day someone is due",
-                enabled = notificationsOn,
-                shape = RoundedCornerShape(outer, outer, inner, inner),
-                modifier = Modifier.revealOnEnter(4)
-            )
-            NotificationFeatureRow(
-                icon = Icons.Outlined.Book,
-                title = "Daily text",
-                description = "A morning prompt to read today's text",
-                enabled = notificationsOn,
-                shape = RoundedCornerShape(inner),
-                modifier = Modifier.revealOnEnter(5)
-            )
-            NotificationFeatureRow(
-                icon = Icons.Outlined.Timer,
-                title = "Monthly goal",
-                description = "Progress updates as you log hours",
-                enabled = notificationsOn,
-                shape = RoundedCornerShape(inner, inner, outer, outer),
-                modifier = Modifier.revealOnEnter(6)
-            )
-        }
-
         // ── Master switch ──
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(24.dp))
         SetupSwitchRow(
             icon = Icons.Default.Notifications,
             title = if (notificationsOn) "Notifications on" else "Turn on notifications",
@@ -601,7 +602,7 @@ private fun NotificationsStep(
             else "Allow Ministry Assistant to send reminders",
             checked = notificationsOn,
             onClick = onToggle,
-            modifier = Modifier.revealOnEnter(7)
+            modifier = Modifier.revealOnEnter(4)
         )
         AnimatedVisibility(
             visible = notificationsBlocked && !notificationsOn,
@@ -615,6 +616,37 @@ private fun NotificationsStep(
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp)
             )
         }
+        // ── What you'll get: one connected group (below the switch), outer corners round, inner corners tight ──
+        Spacer(Modifier.height(16.dp))
+        val outer = 28.dp
+        val inner = 6.dp
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            NotificationFeatureRow(
+                icon = Icons.Default.Person,
+                title = "Return visits",
+                description = "Reminded on the day someone is due",
+                enabled = notificationsOn,
+                shape = RoundedCornerShape(outer, outer, inner, inner),
+                modifier = Modifier.revealOnEnter(5)
+            )
+            NotificationFeatureRow(
+                icon = Icons.Outlined.Book,
+                title = "Daily text",
+                description = "A morning prompt to read today's text",
+                enabled = notificationsOn,
+                shape = RoundedCornerShape(inner),
+                modifier = Modifier.revealOnEnter(6)
+            )
+            NotificationFeatureRow(
+                icon = Icons.Outlined.Timer,
+                title = "Monthly goal",
+                description = "Progress updates as you log hours",
+                enabled = notificationsOn,
+                shape = RoundedCornerShape(inner, inner, outer, outer),
+                modifier = Modifier.revealOnEnter(7)
+            )
+        }
+
         Spacer(Modifier.height(16.dp))
     }
 }
@@ -682,110 +714,272 @@ private fun NotificationFeatureRow(
     }
 }
 
+// ── Bible download ──────────────────────────────────────────────────────────
+
+/**
+ * Optional step: start downloading a Bible. The work lives in [BibleDownloads] (process scoped, with a
+ * foreground service), so it keeps running while the user moves on through the wizard.
+ */
+@Composable
+private fun BibleStep(onContinue: () -> Unit) {
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val dataVersion = BibleData.version
+    val imported = remember(dataVersion) { BibleData.importedBibles }
+    val catalog = BibleDownloads.catalog
+
+    val anyStarted = catalog.any { src ->
+        BibleDownloads.states[src.id] != null || imported.any { it.name == src.language }
+    }
+
+    StepScaffold(
+        ctaLabel = if (anyStarted) "Continue" else "Skip for now",
+        onCta = onContinue
+    ) {
+        Spacer(Modifier.height(8.dp))
+        HeroBadge(icon = Icons.Default.Download, modifier = Modifier.revealOnEnter(0))
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Download your",
+            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Light),
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.revealOnEnter(1)
+        )
+        Text(
+            "Bible",
+            style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.ExtraBold),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.revealOnEnter(2)
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Read scriptures offline, right inside the app. You can add more Bibles later in Settings.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.revealOnEnter(3)
+        )
+
+        Spacer(Modifier.height(24.dp))
+        val outer = 28.dp
+        val inner = 6.dp
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            catalog.forEachIndexed { index, source ->
+                val shape = when {
+                    catalog.size == 1 -> RoundedCornerShape(outer)
+                    index == 0 -> RoundedCornerShape(outer, outer, inner, inner)
+                    index == catalog.lastIndex -> RoundedCornerShape(inner, inner, outer, outer)
+                    else -> RoundedCornerShape(inner)
+                }
+                BibleSourceRow(
+                    source = source,
+                    imported = imported.any { it.name == source.language },
+                    state = BibleDownloads.states[source.id],
+                    shape = shape,
+                    onStart = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        BibleDownloads.start(context, source)
+                    },
+                    modifier = Modifier.revealOnEnter(4 + index)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "Downloads keep going in the background, so you can carry on with setup.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .revealOnEnter(6)
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun BibleSourceRow(
+    source: BibleDownloads.Source,
+    imported: Boolean,
+    state: BibleDownloads.State?,
+    shape: RoundedCornerShape,
+    onStart: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val done = imported && state == null
+    val well by animateColorAsState(
+        if (done) scheme.primaryContainer else scheme.surfaceContainerHighest,
+        Motion.effectsDefault(), label = "bibleWell"
+    )
+    val tint by animateColorAsState(
+        if (done) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+        Motion.effectsDefault(), label = "bibleTint"
+    )
+
+    val subtitle = when {
+        state is BibleDownloads.State.Downloading ->
+            if (state.progress >= 0f) "Downloading… ${(state.progress * 100).toInt()}%" else "Downloading…"
+        state is BibleDownloads.State.Importing -> "Importing…"
+        state is BibleDownloads.State.Failed -> state.message
+        done -> "Ready to read"
+        else -> source.subtitle
+    }
+
+    Surface(shape = shape, color = scheme.surfaceContainerLow, modifier = modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(
+                shape = MaterialShapes.Cookie6Sided.toShape(),
+                color = well,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.Book, null, tint = tint, modifier = Modifier.size(22.dp))
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    buildString {
+                        append(source.language)
+                        source.nativeName?.let { append(" · ").append(it) }
+                    },
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    color = scheme.onSurface,
+                    maxLines = 1
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state is BibleDownloads.State.Failed) scheme.error else scheme.onSurfaceVariant,
+                    maxLines = 2
+                )
+            }
+            when {
+                state is BibleDownloads.State.Downloading && state.progress >= 0f ->
+                    CircularProgressIndicator(
+                        progress = { state.progress },
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 3.dp
+                    )
+                state is BibleDownloads.State.Downloading || state is BibleDownloads.State.Importing ->
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                state is BibleDownloads.State.Failed ->
+                    FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                        Text("Retry")
+                    }
+                done -> Icon(Icons.Default.Check, null, tint = scheme.primary, modifier = Modifier.size(24.dp))
+                else -> FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                    Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Get")
+                }
+            }
+        }
+    }
+}
+
 // ── Monthly goal ────────────────────────────────────────────────────────────
 
+/**
+ * Fits any screen WITHOUT scrolling: the ring is the flexible element. Its size is whatever is left
+ * after the fixed rows (title, hint, stepper, presets), clamped to 96..230dp. On very short screens
+ * the hint text is dropped and the preset cards get slightly shorter.
+ */
 @Composable
 private fun GoalStep(
     goal: Int,
     onGoalChange: (Int) -> Unit,
-    finishing: Boolean,
-    onFinishClick: () -> Unit,
-    onMorphDone: () -> Unit,
+    onContinue: () -> Unit,
 ) {
-    // morph: 0 = "Start using the app" pill, 1 = Home's Monthly progress card.
-    val morph = remember { Animatable(0f) }
-    val contentFade = remember { Animatable(1f) }
+    StepScaffold(ctaLabel = "Continue", onCta = onContinue, scrollable = false) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val h = maxHeight
+            val showHint = h >= 520.dp
+            val presetH = if (h >= 480.dp) 68.dp else 56.dp
+            // title 80 + gaps/rows 132 + presets (2 cards + gap) + optional hint 48
+            val fixed = 212.dp + presetH * 2 + (if (showHint) 48.dp else 0.dp)
+            val ringSize = (h - fixed).coerceIn(96.dp, 230.dp)
 
-    LaunchedEffect(finishing) {
-        if (finishing) {
-            launch { contentFade.animateTo(0f, Motion.effectsDefault) }
-            morph.animateTo(1f, Motion.spatialDefault)
-            delay(500) // let the finished card breathe for a moment
-            onMorphDone()
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    buildAnnotatedString {
+                        append("Your monthly\n")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("preaching goal") }
+                    },
+                    style = MaterialTheme.typography.headlineLargeEmphasized.copy(lineHeight = 40.sp),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.revealOnEnter(0)
+                )
+                if (showHint) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Hours you'd like to aim for each month. You can change it later.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        modifier = Modifier.revealOnEnter(1)
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                GoalRing(
+                    goal = goal,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .size(ringSize)
+                        .revealOnEnter(2)
+                )
+
+                Spacer(Modifier.height(8.dp))
+                AnimatedContent(
+                    targetState = perDayLabel(goal),
+                    transitionSpec = { fadeIn(Motion.effectsDefault) togetherWith fadeOut(Motion.effectsFast) },
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .revealOnEnter(3),
+                    label = "perDay"
+                ) { label ->
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .revealOnEnter(4),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    StepperButton(Icons.Default.Remove, "Decrease goal") { onGoalChange(goal - 1) }
+                    Slider(
+                        value = goal.toFloat().coerceIn(5f, 150f),
+                        onValueChange = { onGoalChange(it.roundToInt()) },
+                        valueRange = 5f..150f,
+                        modifier = Modifier.weight(1f)
+                    )
+                    StepperButton(Icons.Default.Add, "Increase goal") { onGoalChange(goal + 1) }
+                }
+
+                Spacer(Modifier.height(12.dp))
+                GoalPresetGrid(
+                    goal = goal,
+                    onGoalChange = onGoalChange,
+                    cardHeight = presetH,
+                    modifier = Modifier.revealOnEnter(5)
+                )
+            }
         }
-    }
-
-    StepScaffold(
-        contentAlpha = { contentFade.value },
-        cta = {
-            FinishMorphCta(
-                label = "Start using the app",
-                goal = goal,
-                morph = { morph.value },
-                enabled = !finishing,
-                onClick = onFinishClick,
-            )
-        }
-    ) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            buildAnnotatedString {
-                append("Your monthly\n")
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("preaching goal") }
-            },
-            style = MaterialTheme.typography.headlineLargeEmphasized.copy(lineHeight = 40.sp),
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.revealOnEnter(0)
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "How many hours would you like to aim for each month? You can change this later.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.revealOnEnter(1)
-        )
-
-        Spacer(Modifier.height(20.dp))
-        GoalRing(
-            goal = goal,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .size(200.dp)
-                .revealOnEnter(2)
-        )
-
-        Spacer(Modifier.height(12.dp))
-        AnimatedContent(
-            targetState = perDayLabel(goal),
-            transitionSpec = { fadeIn(Motion.effectsDefault) togetherWith fadeOut(Motion.effectsFast) },
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .revealOnEnter(3),
-            label = "perDay"
-        ) { label ->
-            Text(
-                label,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .revealOnEnter(4),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            StepperButton(Icons.Default.Remove, "Decrease goal") { onGoalChange(goal - 1) }
-            Slider(
-                value = goal.toFloat().coerceIn(5f, 150f),
-                onValueChange = { onGoalChange(it.roundToInt()) },
-                valueRange = 5f..150f,
-                modifier = Modifier.weight(1f)
-            )
-            StepperButton(Icons.Default.Add, "Increase goal") { onGoalChange(goal + 1) }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        GoalPresetGrid(
-            goal = goal,
-            onGoalChange = onGoalChange,
-            modifier = Modifier.revealOnEnter(5)
-        )
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -811,9 +1005,16 @@ private fun GoalRing(goal: Int, modifier: Modifier = Modifier) {
     val track = MaterialTheme.colorScheme.surfaceContainerHigh
     val arc = MaterialTheme.colorScheme.primary
 
-    Box(modifier, contentAlignment = Alignment.Center) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val ringSize = maxWidth
+        val numberStyle = when {
+            ringSize >= 180.dp -> MaterialTheme.typography.displayLarge
+            ringSize >= 140.dp -> MaterialTheme.typography.displayMedium
+            else -> MaterialTheme.typography.displaySmall
+        }
+        val strokeDp = (ringSize.value * 0.09f).coerceIn(10f, 20f).dp
         Canvas(Modifier.fillMaxSize()) {
-            val strokeW = 18.dp.toPx()
+            val strokeW = strokeDp.toPx()
             val inset = strokeW / 2
             val arcSize = Size(size.width - strokeW, size.height - strokeW)
             drawArc(track, 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(strokeW))
@@ -829,21 +1030,22 @@ private fun GoalRing(goal: Int, modifier: Modifier = Modifier) {
                 transitionSpec = {
                     val up = targetState > initialState
                     (slideInVertically(Motion.spatialDefault<IntOffset>()) { if (up) it else -it } +
-                            fadeIn(Motion.effectsDefault)) togetherWith
-                            (slideOutVertically(Motion.spatialDefault<IntOffset>()) { if (up) -it else it } +
-                                    fadeOut(Motion.effectsFast))
+                        fadeIn(Motion.effectsDefault)) togetherWith
+                        (slideOutVertically(Motion.spatialDefault<IntOffset>()) { if (up) -it else it } +
+                            fadeOut(Motion.effectsFast))
                 },
                 label = "goalNumber"
             ) { value ->
                 Text(
                     "$value",
-                    style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
+                    style = numberStyle.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground
                 )
             }
             Text(
                 "hours / month",
-                style = MaterialTheme.typography.labelLarge,
+                style = if (ringSize >= 140.dp) MaterialTheme.typography.labelLarge
+                else MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -866,7 +1068,12 @@ private fun StepperButton(icon: ImageVector, description: String, onClick: () ->
 
 /** Quick picks: a 3 x 2 grid of cards. The selected card grows rounder and fills with the container color. */
 @Composable
-private fun GoalPresetGrid(goal: Int, onGoalChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun GoalPresetGrid(
+    goal: Int,
+    onGoalChange: (Int) -> Unit,
+    cardHeight: Dp,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GoalPresets.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -875,6 +1082,7 @@ private fun GoalPresetGrid(goal: Int, onGoalChange: (Int) -> Unit, modifier: Mod
                         hours = hours,
                         label = label,
                         selected = goal == hours,
+                        height = cardHeight,
                         modifier = Modifier.weight(1f)
                     ) { onGoalChange(hours) }
                 }
@@ -888,6 +1096,7 @@ private fun GoalPresetCard(
     hours: Int,
     label: String,
     selected: Boolean,
+    height: Dp,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -909,7 +1118,7 @@ private fun GoalPresetCard(
         color = container,
         contentColor = content,
         modifier = modifier
-            .height(76.dp)
+            .height(height)
             .pressScale(src, 0.94f)
     ) {
         Column(
@@ -936,15 +1145,21 @@ private fun GoalPresetCard(
 
 // ── Shared UI pieces ────────────────────────────────────────────────────────
 
-/** Standard step layout: scrollable content on top, big CTA pinned at the bottom. */
+/**
+ * Standard step layout: content on top, big CTA pinned at the bottom.
+ * [scrollable] = false for steps that must always fit on screen (they size themselves from their
+ * available height instead).
+ */
 @Composable
 private fun StepScaffold(
-    ctaLabel: String = "",
-    onCta: () -> Unit = {},
-    contentAlpha: () -> Float = { 1f },
-    cta: (@Composable () -> Unit)? = null,
+    ctaLabel: String,
+    onCta: () -> Unit,
+    scrollable: Boolean = true,
+    ctaEnabled: Boolean = true,
+    ctaIcon: ImageVector = Icons.AutoMirrored.Filled.ArrowForward,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val scroll = rememberScrollState()
     Column(
         Modifier
             .fillMaxSize()
@@ -954,12 +1169,11 @@ private fun StepScaffold(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .graphicsLayer { alpha = contentAlpha() }
-                .verticalScroll(rememberScrollState()),
+                .then(if (scrollable) Modifier.verticalScroll(scroll) else Modifier),
             content = content
         )
         Box(Modifier.revealOnEnter(7)) {
-            if (cta != null) cta() else BigCtaButton(ctaLabel, onCta)
+            BigCtaButton(ctaLabel, onCta, enabled = ctaEnabled, icon = ctaIcon)
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -1004,6 +1218,7 @@ private fun BigCtaButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    icon: ImageVector = Icons.AutoMirrored.Filled.ArrowForward,
 ) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
@@ -1045,7 +1260,7 @@ private fun BigCtaButton(
                     )
             )
             Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
+                icon,
                 contentDescription = null,
                 tint = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
@@ -1132,205 +1347,491 @@ private fun SetupSwitchRow(
     }
 }
 
-// ── Final CTA → Monthly progress card morph ─────────────────────────────────
+// ── Color palette (final step) ──────────────────────────────────────────────
 
-private val MonthlyCardHeight = 128.dp
-
-/** Same colors Home uses for the Monthly progress card, so the morph lands on the real thing. */
-private data class FinishCardColors(val container: Color, val accent: Color, val track: Color)
-
+/**
+ * Last step. Picking a palette calls [AppearanceRepository.setPalette], and because the whole app
+ * (this wizard included) is themed from that state, everything recolors live behind the picker.
+ * Nothing extra to save: the choice is already persisted, so "Start using the app" just hands over.
+ *
+ * Layout: live preview, two big "featured" tiles (Default + Dynamic), then a row of color swatches.
+ */
 @Composable
-private fun rememberFinishCardColors(): FinishCardColors {
-    val scheme = MaterialTheme.colorScheme
+private fun PaletteStep(
+    finishing: Boolean,
+    onFinish: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
     val prefs = AppearanceRepository.prefs
     val dark = prefs.themeMode.isDark(isSystemInDarkTheme())
-    return remember(scheme, prefs.palette, dark) {
-        if (prefs.palette.isBrand) {
-            FinishCardColors(
-                container = if (dark) StudyDeepGreenDarkMode else StudyDeepGreen,
-                accent = StudyEmerald,
-                track = StudyGreenTrack,
-            )
+    val selected = prefs.palette
+
+    // Featured: the app's own look + the system (wallpaper) look. Dynamic needs Android 12+.
+    val featured = remember {
+        PaletteColors.filter { it.isBrand || (it.isDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) }
+            .sortedBy { if (it.isBrand) 0 else 1 }
+    }
+    val colors = remember { PaletteColors.filter { !it.isBrand && !it.isDynamic } }
+    // Start at the END of the color row, then sweep back to the start (left → right). It shows the
+    // user at a glance that there are more colors to swipe through. A touch cancels the sweep.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = colors.lastIndex.coerceAtLeast(0)
+    )
+    LaunchedEffect(Unit) {
+        delay(650)
+        listState.animateScrollToItem(0)
+    }
+
+    fun choose(palette: ThemePalette) {
+        if (palette == selected) return
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        AppearanceRepository.setPalette(palette)
+        if (palette.isDynamic) AppearanceRepository.setDynamicColor(true)
+    }
+
+    StepScaffold(
+        ctaLabel = "Start using the app",
+        onCta = onFinish,
+        scrollable = false,
+        ctaEnabled = !finishing,
+        ctaIcon = Icons.Default.Check,
+    ) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val h = maxHeight
+            val showHint = h >= 540.dp
+            val swatch = if (h >= 500.dp) 64.dp else 56.dp
+
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    buildAnnotatedString {
+                        append("Choose your\n")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("color palette") }
+                    },
+                    style = MaterialTheme.typography.headlineLargeEmphasized.copy(lineHeight = 40.sp),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.revealOnEnter(0)
+                )
+                if (showHint) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "The whole app recolors instantly. Change it any time in Appearance.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        modifier = Modifier.revealOnEnter(1)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                // The preview takes whatever height is left, so the step never needs to scroll.
+                PalettePreview(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .heightIn(max = 190.dp)
+                        .revealOnEnter(2)
+                )
+
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .revealOnEnter(3),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    featured.forEach { palette ->
+                        FeaturedPaletteTile(
+                            palette = palette,
+                            dark = dark,
+                            selected = palette == selected,
+                            onClick = { choose(palette) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp)
+                        .revealOnEnter(4),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "More colors",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (selected in colors) {
+                        Text(
+                            "  ·  ${selected.name}",
+                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                LazyRow(
+                    state = listState,
+                    modifier = Modifier
+                        .fullBleed(24.dp)
+                        .revealOnEnter(5),
+                    contentPadding = PaddingValues(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(colors, key = { it.name }) { palette ->
+                        PaletteSwatch(
+                            palette = palette,
+                            dark = dark,
+                            selected = palette == selected,
+                            size = swatch,
+                            onClick = { choose(palette) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+/** Lets a child draw past the parent's horizontal padding (edge-to-edge scrolling rows). */
+private fun Modifier.fullBleed(padding: Dp): Modifier = layout { measurable, constraints ->
+    val extra = padding.roundToPx() * 2
+    val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + extra))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-extra / 2, 0) }
+}
+
+@Composable
+private fun rememberSwatchScheme(palette: ThemePalette, dark: Boolean): androidx.compose.material3.ColorScheme {
+    val context = LocalContext.current
+    return remember(palette, dark) {
+        if (palette.isDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         } else {
-            val container = if (dark) scheme.surfaceContainerHigh else scheme.onPrimaryContainer
-            val accent = if (dark) scheme.primary else lerpColor(scheme.primary, Color.White, 0.35f)
-            FinishCardColors(container, accent, lerpColor(container, accent, 0.25f))
+            paletteColorScheme(palette, dark)
         }
     }
 }
 
 /**
- * The wizard's last button. Tapping it morphs the pill (spring) into the Monthly progress card:
- * height 88 → 128dp, corners 44 → 28dp, primary → deep card color, label cross-fades into the
- * ring + "0 / N h" content. [morph] is 0f..1f (may overshoot slightly because it is a spring).
+ * Big tile for the two "system level" choices.
+ *  • Default (Study)  – tri-tone cookie, the hand-tuned green look.
+ *  • Dynamic          – sweep-gradient cookie built from the wallpaper colors.
  */
 @Composable
-private fun FinishMorphCta(
-    label: String,
-    goal: Int,
-    morph: () -> Float,
-    enabled: Boolean,
+private fun FeaturedPaletteTile(
+    palette: ThemePalette,
+    dark: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val card = rememberFinishCardColors()
+    val swatchScheme = rememberSwatchScheme(palette, dark)
     val scheme = MaterialTheme.colorScheme
-    val src = remember { MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val cookieRotation by animateFloatAsState(
-        if (pressed) 45f else 0f, Motion.spatialFast, label = "ctaCookie"
+    val radius by animateDpAsState(if (selected) 32.dp else 20.dp, Motion.spatialDefaultDp, label = "tileRadius")
+    val container by animateColorAsState(
+        if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
+        Motion.effectsDefault(), label = "tileContainer"
     )
-
-    val m = morph()
-    val t = m.coerceIn(0f, 1f)
-    val height = lerp(88f, MonthlyCardHeight.value, m).dp
-    val corner = lerp(44f, 28f, m).coerceAtLeast(0f).dp
-    val container = lerpColor(scheme.primary, card.container, t)
-    val content = lerpColor(scheme.onPrimary, Color.White, t)
-    val buttonAlpha = (1f - t * 2.4f).coerceIn(0f, 1f)
-    val cardAlpha = ((t - 0.4f) * 2.4f).coerceIn(0f, 1f)
+    val content by animateColorAsState(
+        if (selected) scheme.onPrimaryContainer else scheme.onSurface,
+        Motion.effectsDefault(), label = "tileContent"
+    )
+    val src = remember { MutableInteractionSource() }
 
     Surface(
         onClick = onClick,
-        enabled = enabled,
         interactionSource = src,
-        shape = RoundedCornerShape(if (pressed && enabled) 24.dp else corner),
+        shape = RoundedCornerShape(radius),
         color = container,
         contentColor = content,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .pressScale(src, 0.97f, enabled),
+        border = if (selected) BorderStroke(2.dp, scheme.primary) else null,
+        modifier = modifier
+            .height(68.dp)
+            .pressScale(src, 0.96f)
+            .semantics { contentDescription = "${palette.name} palette" }
     ) {
-        Box(Modifier.fillMaxSize()) {
-            // 1) the button face
-            Row(
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Canvas(
                 Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = buttonAlpha }
-                    .padding(start = 32.dp, end = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .size(44.dp)
+                    .clip(MaterialShapes.Cookie6Sided.toShape())
             ) {
-                Text(
-                    label,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLargeEmphasized
-                )
-                Box(Modifier.size(60.dp), contentAlignment = Alignment.Center) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { rotationZ = cookieRotation }
-                            .clip(MaterialShapes.Cookie9Sided.toShape())
-                            .background(scheme.primaryContainer)
+                if (palette.isDynamic) {
+                    drawRect(
+                        Brush.sweepGradient(
+                            listOf(
+                                swatchScheme.primary, swatchScheme.tertiary,
+                                swatchScheme.secondary, swatchScheme.primary
+                            )
+                        )
                     )
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward, null,
-                        tint = scheme.onPrimaryContainer,
-                        modifier = Modifier.size(28.dp)
+                } else {
+                    drawRect(swatchScheme.primary, Offset.Zero, Size(this.size.width, this.size.height / 2))
+                    drawRect(
+                        swatchScheme.secondary,
+                        Offset(0f, this.size.height / 2),
+                        Size(this.size.width / 2, this.size.height / 2)
+                    )
+                    drawRect(
+                        swatchScheme.tertiary,
+                        Offset(this.size.width / 2, this.size.height / 2),
+                        Size(this.size.width / 2, this.size.height / 2)
                     )
                 }
             }
-
-            // 2) the Monthly progress card face (fixed 128dp so it never squishes while growing)
-            MonthlyCardFace(
-                goal = goal,
-                colors = card,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .requiredHeight(MonthlyCardHeight)
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = cardAlpha
-                        translationY = (1f - cardAlpha) * 14.dp.toPx()
-                    }
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    palette.name,
+                    style = MaterialTheme.typography.titleSmallEmphasized,
+                    maxLines = 1
+                )
+                Text(
+                    if (palette.isDynamic) "Your wallpaper" else "Default",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = content.copy(alpha = 0.7f),
+                    maxLines = 1
+                )
+            }
+            AnimatedVisibility(
+                visible = selected,
+                enter = scaleIn(Motion.spatialFast) + fadeIn(Motion.effectsFast),
+                exit = scaleOut(Motion.spatialFast) + fadeOut(Motion.effectsFast),
+            ) {
+                Icon(Icons.Default.Check, null, tint = scheme.primary, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
 
-/** Mirrors Home's Monthly progress card at 0% so the hand-over is seamless. */
+/** A plain color: a tri-tone dot (primary / secondary / tertiary) in a card that rounds when selected. */
 @Composable
-private fun MonthlyCardFace(goal: Int, colors: FinishCardColors, modifier: Modifier = Modifier) {
-    val month = remember { SimpleDateFormat("MMM yyyy", Locale.ENGLISH).format(Date()).uppercase() }
-    val perDay = remember(goal) {
-        val cal = Calendar.getInstance()
-        val daysLeft = (cal.getActualMaximum(Calendar.DAY_OF_MONTH) - cal.get(Calendar.DAY_OF_MONTH) + 1)
-            .coerceAtLeast(1)
-        String.format(Locale.US, "%.1fh / day left", goal.toFloat() / daysLeft)
-    }
+private fun PaletteSwatch(
+    palette: ThemePalette,
+    dark: Boolean,
+    selected: Boolean,
+    size: Dp,
+    onClick: () -> Unit,
+) {
+    val swatchScheme = rememberSwatchScheme(palette, dark)
+    val scheme = MaterialTheme.colorScheme
+    val radius by animateDpAsState(if (selected) size / 2 else 22.dp, Motion.spatialDefaultDp, label = "swatchRadius")
+    val scale by animateFloatAsState(if (selected) 1.04f else 1f, Motion.spatialFast, label = "swatchScale")
+    val container by animateColorAsState(
+        if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
+        Motion.effectsDefault(), label = "swatchContainer"
+    )
+    val src = remember { MutableInteractionSource() }
 
-    Box(modifier) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 10.dp, end = 10.dp)
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Default.ArrowOutward, null,
-                tint = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Row(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.size(100.dp), contentAlignment = Alignment.Center) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val strokeWidthPx = 8.5.dp.toPx()
-                    val diameter = size.minDimension - strokeWidthPx
-                    val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                    drawArc(
-                        color = colors.track, startAngle = -90f, sweepAngle = 360f, useCenter = false,
-                        topLeft = topLeft, size = Size(diameter, diameter),
-                        style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                    )
-                    drawCircle(colors.accent, strokeWidthPx / 2f, Offset(size.width / 2f, topLeft.y))
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "0%",
-                        style = MaterialTheme.typography.titleLargeEmphasized,
-                        color = Color.White,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Text(
-                        "Completed",
-                        style = MaterialTheme.typography.labelSmallEmphasized,
-                        color = colors.accent
-                    )
+    Surface(
+        onClick = onClick,
+        interactionSource = src,
+        shape = RoundedCornerShape(radius),
+        color = container,
+        border = if (selected) BorderStroke(2.5.dp, scheme.primary) else null,
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .pressScale(src, 0.92f)
+            .semantics { contentDescription = "${palette.name} palette" }
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Canvas(
+                Modifier
+                    .size(size * 0.58f)
+                    .clip(CircleShape)
+            ) {
+                drawRect(swatchScheme.primary, Offset.Zero, Size(this.size.width, this.size.height / 2))
+                drawRect(
+                    swatchScheme.secondary,
+                    Offset(0f, this.size.height / 2),
+                    Size(this.size.width / 2, this.size.height / 2)
+                )
+                drawRect(
+                    swatchScheme.tertiary,
+                    Offset(this.size.width / 2, this.size.height / 2),
+                    Size(this.size.width / 2, this.size.height / 2)
+                )
+            }
+            AnimatedVisibility(
+                visible = selected,
+                enter = scaleIn(Motion.spatialFast) + fadeIn(Motion.effectsFast),
+                exit = scaleOut(Motion.spatialFast) + fadeOut(Motion.effectsFast),
+            ) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(scheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Check, null, tint = scheme.primary, modifier = Modifier.size(14.dp))
                 }
             }
-            Spacer(Modifier.width(18.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    month,
-                    style = MaterialTheme.typography.labelSmallEmphasized,
-                    letterSpacing = 1.8.sp,
-                    color = Color.White.copy(alpha = 0.6f)
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    "0 / ${goal}h",
-                    style = MaterialTheme.typography.titleLargeEmphasized,
-                    letterSpacing = (-0.8).sp,
-                    color = Color.White
-                )
-                Spacer(Modifier.height(6.dp))
-                Surface(shape = RoundedCornerShape(50), color = Color(0x20FFFFFF)) {
-                    Text(
-                        perDay,
-                        style = MaterialTheme.typography.labelMediumEmphasized,
-                        color = Color.White.copy(alpha = 0.9f),
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        }
+    }
+}
+
+@Composable
+private fun animatedRole(color: Color, label: String): Color =
+    animateColorAsState(color, Motion.effectsDefault(), label = label).value
+
+/**
+ * A miniature app screen (top bar, hero card, accent tiles, navigation bar) painted with the live
+ * color scheme. Every color eases to its new value when the palette changes.
+ */
+@Composable
+private fun PalettePreview(modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val primary = animatedRole(cs.primary, "pvPrimary")
+    val onPrimary = animatedRole(cs.onPrimary, "pvOnPrimary")
+    val primaryContainer = animatedRole(cs.primaryContainer, "pvPrimaryContainer")
+    val onPrimaryContainer = animatedRole(cs.onPrimaryContainer, "pvOnPrimaryContainer")
+    val secondary = animatedRole(cs.secondary, "pvSecondary")
+    val secondaryContainer = animatedRole(cs.secondaryContainer, "pvSecondaryContainer")
+    val tertiaryContainer = animatedRole(cs.tertiaryContainer, "pvTertiaryContainer")
+    val onSurface = animatedRole(cs.onSurface, "pvOnSurface")
+    val navBar = animatedRole(cs.surfaceContainerHigh, "pvNav")
+    val card = animatedRole(cs.surfaceContainerLow, "pvCard")
+
+    BoxWithConstraints(modifier) {
+        val showNav = maxHeight >= 150.dp
+        Surface(
+            Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(32.dp),
+            color = card,
+            border = BorderStroke(1.dp, cs.outlineVariant.copy(alpha = 0.5f)),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // top bar
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .width(96.dp)
+                            .height(12.dp)
+                            .clip(CircleShape)
+                            .background(onSurface.copy(alpha = 0.14f))
                     )
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(primary)
+                    )
+                }
+
+                // hero card + accent tiles
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Column(
+                        Modifier
+                            .weight(1.7f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(primaryContainer)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(0.7f)
+                                    .height(12.dp)
+                                    .clip(CircleShape)
+                                    .background(onPrimaryContainer.copy(alpha = 0.55f))
+                            )
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(0.45f)
+                                    .height(10.dp)
+                                    .clip(CircleShape)
+                                    .background(onPrimaryContainer.copy(alpha = 0.25f))
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .width(64.dp)
+                                .height(32.dp)
+                                .clip(CircleShape)
+                                .background(primary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Check, null, tint = onPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(secondaryContainer)
+                        )
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(tertiaryContainer)
+                        )
+                    }
+                }
+
+                // navigation bar
+                if (showNav) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .clip(CircleShape)
+                            .background(navBar),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier
+                                .width(48.dp)
+                                .height(24.dp)
+                                .clip(CircleShape)
+                                .background(secondary)
+                        )
+                        repeat(3) {
+                            Box(
+                                Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(onSurface.copy(alpha = 0.3f))
+                            )
+                        }
+                    }
                 }
             }
         }

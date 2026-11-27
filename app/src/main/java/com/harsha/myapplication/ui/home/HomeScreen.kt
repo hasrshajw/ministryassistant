@@ -77,7 +77,11 @@ import com.harsha.myapplication.ui.theme.StudyGreenTrack
 import com.harsha.myapplication.ui.theme.pressScale
 import com.harsha.myapplication.ui.theme.pressScaleClickable
 import com.harsha.myapplication.ui.theme.revealOnEnter
+import com.harsha.myapplication.data.HomeCard
+import com.harsha.myapplication.data.HomeLayoutRepository
+import com.harsha.myapplication.data.HoursRepository
 import com.harsha.myapplication.data.PeopleRepository
+import com.harsha.myapplication.data.SetupRepository
 import com.harsha.myapplication.data.PersonRecord
 import com.harsha.myapplication.ui.components.StudyTopBar
 import com.harsha.myapplication.ui.people.PersonCard
@@ -162,6 +166,7 @@ fun HomeScreen(
     onAddNotesClick: () -> Unit = {},
     onAddHoursClick: () -> Unit = {},
     onLogHours: (hours: Double, date: Date) -> Unit = { _, _ -> },
+    onMonthlyProgressClick: () -> Unit = {},
     onAddPersonClick: () -> Unit = {},
     onEditLogClick: () -> Unit = {},
     onViewMoreClick: () -> Unit = {},
@@ -191,7 +196,12 @@ fun HomeScreen(
             .sortedWith(compareBy({ it.nextVisitDate }, { visitTimeMinutes(it) }))
     }
 
-    val sectionPager = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    // Which top cards appear, and in what order, comes from Customize App.
+    val cards = HomeLayoutRepository.layout.visibleCards
+    val sectionPager = rememberPagerState(
+        initialPage = HomeLayoutRepository.layout.startIndex(),
+        pageCount = { cards.size },
+    )
     val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val colors = MaterialTheme.colorScheme
@@ -319,8 +329,8 @@ fun HomeScreen(
                                         alpha = 1f - 0.5f * o
                                     }
                                 ) {
-                                    when (page) {
-                                        0 -> Column(Modifier.fillMaxWidth()) {
+                                    when (cards.getOrNull(page) ?: HomeCard.Ministry) {
+                                        HomeCard.Notes -> Column(Modifier.fillMaxWidth()) {
                                             SectionTitle("Personal study", icon = Icons.Default.PushPin)
                                             PinnedCard(
                                                 height = DailyCardHeight,
@@ -330,11 +340,11 @@ fun HomeScreen(
                                                 onClick = onPersonalStudyClick,
                                             )
                                         }
-                                        1 -> Column(Modifier.fillMaxWidth()) {
+                                        HomeCard.Ministry -> Column(Modifier.fillMaxWidth()) {
                                             SectionTitle("Monthly progress")
-                                            MonthlyProgressPanel(height = DailyCardHeight)
+                                            MonthlyProgressPanel(height = DailyCardHeight, onClick = onMonthlyProgressClick)
                                         }
-                                        else -> Column(Modifier.fillMaxWidth()) {
+                                        HomeCard.DailyText -> Column(Modifier.fillMaxWidth()) {
                                             SectionTitle("Daily text")
                                             DailyTextRow(
                                                 items = daily,
@@ -351,7 +361,7 @@ fun HomeScreen(
 
                             Spacer(Modifier.height(20.dp))
                             DotIndicator(
-                                count = 3,
+                                count = cards.size,
                                 selected = sectionPager.currentPage,
                                 modifier = Modifier
                                     .align(Alignment.CenterHorizontally)
@@ -457,6 +467,7 @@ fun HomeScreen(
             AddHoursSheet(
                 onDismiss = { showAddHoursSheet = false },
                 onSave = { hours, date ->
+                    HoursRepository.add(context, hours, date)   // feeds the Monthly progress card
                     onLogHours(hours, date)
                     showAddHoursSheet = false
                 },
@@ -814,32 +825,58 @@ private fun MonthlyGoalCard(
 }
 
 @Composable
-private fun MonthlyProgressPanel(height: Dp) {
+private fun MonthlyProgressPanel(height: Dp, onClick: () -> Unit) {
     val panelColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val panelTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val completedMinutes = 180
-    val goalHours = 30
-    val remainingHours = (goalHours - completedMinutes / 60).coerceAtLeast(0)
-    val message = if (remainingHours > 0) {
-        "${remainingHours}h left to reach your ${goalHours}h goal"
+    // Real data: hours logged through AddHoursSheet against the goal chosen in Setup.
+    val now = Calendar.getInstance()
+    val goalHours = SetupRepository.monthlyGoalHours.coerceAtLeast(1)
+    val completedMinutes = HoursRepository.minutesInMonth(now.get(Calendar.YEAR), now.get(Calendar.MONTH))
+    val daysLeft = now.getActualMaximum(Calendar.DAY_OF_MONTH) - now.get(Calendar.DAY_OF_MONTH) + 1
+    val monthLabel = SimpleDateFormat("MMM yyyy", Locale.ENGLISH).format(now.time).uppercase(Locale.ENGLISH)
+
+    val remainingMinutes = (goalHours * 60 - completedMinutes).coerceAtLeast(0)
+    val message = if (remainingMinutes > 0) {
+        val h = remainingMinutes / 60
+        val m = remainingMinutes % 60
+        val left = when {
+            h > 0 && m > 0 -> "${h}h ${m}m"
+            h > 0 -> "${h}h"
+            else -> "${m}m"
+        }
+        "$left left to reach your ${goalHours}h goal"
     } else {
         "Goal reached. Great work this month!"
     }
 
+    // Press scale must wrap the WHOLE panel (background included). Previously pressScale sat after
+    // clip/background, so only the inner green card shrank while the grey panel stayed put.
+    val pressSrc = remember { MutableInteractionSource() }
+
     Column(
         Modifier
             .padding(horizontal = ScreenMargin)
+            // Same container-transform as the Daily text card: the card grows into the page.
+            .appSharedBoundsOrNone(key = "monthly-card", cornerRadius = RadiusLarge)
             .fillMaxWidth()
             .height(height)
+            .pressScale(pressSrc, pressedScale = 0.97f)      // scales everything drawn below
             .clip(RoundedCornerShape(RadiusLarge))
-            .background(panelColor),
+            .background(panelColor)
+            .clickable(
+                interactionSource = pressSrc,
+                indication = LocalIndication.current,
+                onClickLabel = "Open monthly progress",
+                role = Role.Button,
+                onClick = onClick,
+            ),
     ) {
         MonthlyGoalCard(
-            monthLabel = "NOV 2026",
+            monthLabel = monthLabel,
             completedMinutes = completedMinutes,
             goalHours = goalHours,
-            daysLeft = 8,
+            daysLeft = daysLeft,
             modifier = Modifier.height(MonthlyCardHeight),
             shape = RoundedCornerShape(RadiusLarge),
         )
@@ -871,15 +908,18 @@ private fun PinnedCard(
     onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    val pressSrc = remember { MutableInteractionSource() }
     Column(
         Modifier
             .padding(horizontal = ScreenMargin)
             .fillMaxWidth()
             .height(height)
+            .pressScale(pressSrc, pressedScale = 0.97f)      // same fix: scale the whole card
             .clip(RoundedCornerShape(RadiusLarge))
             .background(colors.surfaceContainerHigh)
-            .pressScaleClickable(
-                pressedScale = 0.97f,
+            .clickable(
+                interactionSource = pressSrc,
+                indication = LocalIndication.current,
                 onClickLabel = buttonLabel,
                 role = Role.Button,
                 onClick = onClick,
@@ -1106,6 +1146,7 @@ internal fun DotIndicator(
     val colors = MaterialTheme.colorScheme
     val motion = MaterialTheme.motionScheme
     val inactive = colors.secondaryContainer
+    if (count <= 1) return   // a single page needs no dots
     Row(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1165,7 +1206,8 @@ val sampleDaily: List<DailyItem> = run {
     }
 }
 
-// ── Recommended (brand-aligned gradients) ───────────────────────────────────
+// ── Recommended (palette-aware gradients) ───────────────────────────────────
+/** Original deep-green gradients, used by the "Study" brand palette. */
 private val RecommendedGradients = listOf(
     Color(0xFF1F9D5B) to Color(0xFF001F1E),
     Color(0xFF2FBF71) to Color(0xFF1E3F37),
@@ -1174,9 +1216,41 @@ private val RecommendedGradients = listOf(
     Color(0xFF40916C) to Color(0xFF1B4332),
 )
 
+/**
+ * Gradients for the Recommended cards.
+ * - "Study" (brand) palette: the original green set.
+ * - Every other palette (incl. Dynamic): built from the active ColorScheme (primary / tertiary /
+ *   secondary and blends of them) fading into the same deep base the Monthly + Daily cards use, so
+ *   the cards follow the selected palette and light/dark mode like the rest of the app.
+ */
+@Composable
+private fun rememberRecommendedGradients(): List<Pair<Color, Color>> {
+    val scheme = MaterialTheme.colorScheme
+    val prefs = AppearanceRepository.prefs
+    val dark = prefs.themeMode.isDark(isSystemInDarkTheme())
+
+    return remember(scheme, prefs.palette, dark) {
+        if (prefs.palette.isBrand) {
+            RecommendedGradients
+        } else {
+            val end = if (dark) scheme.surfaceContainerHigh else scheme.onPrimaryContainer
+            val starts = listOf(
+                scheme.primary,
+                scheme.tertiary,
+                scheme.secondary,
+                lerpColor(scheme.primary, scheme.tertiary, 0.5f),
+                lerpColor(scheme.secondary, scheme.primary, 0.5f),
+            )
+            // In dark mode the roles are light tones; pull them toward the base so the cards stay calm.
+            starts.map { start -> (if (dark) lerpColor(start, end, 0.35f) else start) to end }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecommendedPager(items: List<Recommended>) {
+    val gradients = rememberRecommendedGradients()
     val pageCount = 1_000_000
     val pagerState = rememberPagerState(
         initialPage = pageCount / 2,
@@ -1206,7 +1280,7 @@ private fun RecommendedPager(items: List<Recommended>) {
             flingBehavior = flingBehavior,
         ) { page ->
             val actualPage = page % items.size
-            val (start, end) = RecommendedGradients[actualPage % RecommendedGradients.size]
+            val (start, end) = gradients[actualPage % gradients.size]
             val src = remember { MutableInteractionSource() }
             Card(
                 onClick = { /* open recommended */ },

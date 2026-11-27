@@ -147,7 +147,12 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                StudyTopBar(title = "Directory")
+                StudyTopBar(
+                    title = "Directory",
+                    // Record count lives under the title; the title itself doesn't move.
+                    subtitle = "${records.size} record${if (records.size == 1) "" else "s"}",
+                    keepTitleInPlace = true,
+                )
             },
             floatingActionButton = {
                 val fabSrc = remember { MutableInteractionSource() }
@@ -168,14 +173,7 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                // Header
-                Column(Modifier.padding(horizontal = ScreenMargin).padding(top = 4.dp, bottom = 16.dp)) {
-                    Text(
-                        "${records.size} record${if (records.size == 1) "" else "s"}",
-                        style = typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
+                Spacer(Modifier.height(8.dp))
 
                 // Search + sort
                 Row(
@@ -620,11 +618,11 @@ private fun filterAndSort(
     val q = query.trim()
     val matches = records.filter { r ->
         filter.matches(r.type) && (
-                q.isEmpty() ||
-                        r.name.contains(q, ignoreCase = true) ||
-                        r.address.contains(q, ignoreCase = true) ||
-                        r.mobile.orEmpty().contains(q, ignoreCase = true)
-                )
+            q.isEmpty() ||
+                r.name.contains(q, ignoreCase = true) ||
+                r.address.contains(q, ignoreCase = true) ||
+                r.mobile.orEmpty().contains(q, ignoreCase = true)
+            )
     }
     return when (sort) {
         PersonSort.Name -> matches.sortedBy { it.name.lowercase() }

@@ -25,9 +25,11 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.harsha.myapplication.*
+import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.scripture.BibleData
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
 import com.harsha.myapplication.ui.theme.revealOnEnter
@@ -76,6 +79,8 @@ fun SettingsScreen(
     onOpenProfile: () -> Unit = {},
     onOpenGenZMode: () -> Unit = {},
     onOpenCustomizeApp: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    onOpenBackup: () -> Unit = {},
     onOpenTerms: () -> Unit = {},
     onOpenPrivacy: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
@@ -86,8 +91,12 @@ fun SettingsScreen(
     val dataVersion = BibleData.version
     val bibles = remember(dataVersion) { BibleData.importedBibles }
 
-    var activeName by remember { mutableStateOf(BibleData.currentTranslationName) }
-    LaunchedEffect(dataVersion) { activeName = BibleData.currentTranslationName }
+    val backupPrefs = BackupRepository.prefs
+    val backupSubtitle = if (backupPrefs.lastBackupMillis == 0L) {
+        "Protect your notes and progress"
+    } else {
+        "Last backup ${backupPrefs.lastBackupLabel()}"
+    }
 
     Scaffold(
         topBar = {
@@ -139,47 +148,43 @@ fun SettingsScreen(
                 SectionHeader("Bibles")
                 Spacer(Modifier.height(8.dp))
 
-                val entries = remember(bibles) {
-                    val translations: List<BibleEntry> = bibles.map { BibleEntry.Translation(it.name) }
-                    translations + BibleEntry.Import
-                }
+                // Only the import entry lives here; installed Bibles are managed on the Import screen.
                 GroupedList(
-                    items = entries,
+                    items = listOf(Unit),
                     modifier = Modifier.animateContentSize()
-                ) { entry, pos ->
-                    when (entry) {
-                        is BibleEntry.Translation -> {
-                            val selected = entry.name == activeName
-                            SettingsListItem(
-                                pos = pos,
-                                tone = Tone.Primary,
-                                leadingIcon = Icons.AutoMirrored.Outlined.MenuBook,
-                                title = entry.name,
-                                selected = selected,
-                                onClick = {
-                                    if (activeName != entry.name) {
-                                        activeName = entry.name
-                                        BibleData.setActiveBible(entry.name)
-                                    }
-                                },
-                                trailing = { SelectionMark(selected = selected) }
-                            )
-                        }
+                ) { _, pos ->
+                    SettingsListItem(
+                        pos = pos,
+                        tone = Tone.Tertiary,
+                        leadingIcon = Icons.Outlined.FileDownload,
+                        title = "Import Bible",
+                        subtitle = if (bibles.isEmpty()) {
+                            "Add a Bible to get started"
+                        } else {
+                            "${bibles.size} translation${if (bibles.size == 1) "" else "s"} installed"
+                        },
+                        onClick = onOpenBibles,
+                        showChevron = true
+                    )
+                }
+            }
 
-                        BibleEntry.Import -> SettingsListItem(
-                            pos = pos,
-                            tone = Tone.Tertiary,
-                            leadingIcon = Icons.Outlined.FileDownload,
-                            title = "Import Bible",
-                            subtitle = if (bibles.isEmpty()) {
-                                "Add a Bible to get started"
-                            } else {
-                                "${bibles.size} translation${if (bibles.size == 1) "" else "s"} installed"
-                            },
-                            onClick = onOpenBibles,
-                            showChevron = true
-                        )
-                    }
+            Spacer(Modifier.height(SectionGap))
+
+            // ── Data & backup ──
+            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "settings-data")) {
+                SectionHeader("Data")
+                Spacer(Modifier.height(8.dp))
+                GroupedList(items = listOf(Unit)) { _, pos ->
+                    SettingsListItem(
+                        pos = pos,
+                        tone = Tone.Secondary,
+                        leadingIcon = Icons.Outlined.Backup,
+                        title = "Backup & restore",
+                        subtitle = backupSubtitle,
+                        onClick = onOpenBackup,
+                        showChevron = true
+                    )
                 }
             }
 
@@ -192,6 +197,7 @@ fun SettingsScreen(
                 GroupedList(
                     items = listOf(
                         RowItem(Icons.Outlined.Palette, "Appearance", Tone.Secondary),
+                        RowItem(Icons.Outlined.Notifications, "Notifications", Tone.Tertiary),
                         RowItem(Icons.Outlined.Tune, "Customize App", Tone.Tertiary),
                     )
                 ) { item, pos ->
@@ -203,6 +209,7 @@ fun SettingsScreen(
                         onClick = {
                             when (item.title) {
                                 "Appearance" -> onOpenAppearance()
+                                "Notifications" -> onOpenNotifications()
                                 "Customize App" -> onOpenCustomizeApp()
                             }
                         },
@@ -259,12 +266,6 @@ fun SettingsScreen(
             }
         }
     }
-}
-
-/** Rows of the merged "Bibles" group: each installed translation, then the import entry. */
-private sealed interface BibleEntry {
-    data class Translation(val name: String) : BibleEntry
-    data object Import : BibleEntry
 }
 
 /** Colour family of a row's cookie-shaped icon tile. All pairs come from the theme (light + dark safe). */
@@ -324,7 +325,6 @@ private fun PremiumUpgradeCard(
         onClick = onClick,
         shape = shape,
         color = colors.primaryContainer,
-        border = BorderStroke(1.5.dp, colors.primary.copy(alpha = 0.40f)),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         interactionSource = interaction,

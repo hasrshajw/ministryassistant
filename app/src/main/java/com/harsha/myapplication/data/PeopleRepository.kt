@@ -1,6 +1,7 @@
 package com.harsha.myapplication.data
 
 import android.content.Context
+import com.harsha.myapplication.notifications.ReminderScheduler
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -149,12 +150,15 @@ object PeopleRepository {
             if (obj.optString("id") != id) out.put(obj)
         }
         prefs.edit().putString(KEY, out.toString()).apply()
+        // The person is gone: cancel their pending reminder.
+        ReminderScheduler.cancel(context, id)
+        ReminderScheduler.clearState(context, id)
         true
     } catch (_: Exception) {
         false
     }
 
-    /** Upserts a record by id. */
+    /** Upserts a record by id. Also (re)schedules the visit reminder, so every screen is covered. */
     fun save(context: Context, record: PersonRecord): Boolean = try {
         val prefs = context.prefs()
         val arr = JSONArray(prefs.getString(KEY, "[]") ?: "[]")
@@ -171,6 +175,9 @@ object PeopleRepository {
         }
         if (!replaced) out.put(record.toJson())
         prefs.edit().putString(KEY, out.toString()).apply()
+        // Saved OK: register (or move / cancel) the OS alarm for this person's next visit.
+        // Failure to schedule must never make the save itself look like it failed.
+        runCatching { ReminderScheduler.schedule(context, record) }
         true
     } catch (_: Exception) {
         false
