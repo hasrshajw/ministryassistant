@@ -16,12 +16,14 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +54,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -1411,7 +1414,49 @@ fun NoteEditorView(
         }
     }
 
-    // "More" menu in the top bar: find, share, copy, delete
+    // Secondary actions that live in the SplitButton trailing menu (and the view-mode more menu).
+    val moreMenuContent: @Composable ColumnScope.() -> Unit = {
+        MoreMenuItem(
+            label = "Find in note",
+            icon = Icons.Default.Search,
+            onClick = {
+                menuOpen = false
+                panel = Panel.None
+                findOpen = true
+            }
+        )
+        MoreMenuItem(
+            label = "Share",
+            icon = Icons.Default.Share,
+            enabled = canSave,
+            onClick = {
+                menuOpen = false
+                shareNote()
+            }
+        )
+        MoreMenuItem(
+            label = "Copy text",
+            icon = Icons.Default.ContentCopy,
+            enabled = canSave,
+            onClick = {
+                menuOpen = false
+                copyNote()
+            }
+        )
+        if (onDelete != null && noteId != null) {
+            MoreMenuItem(
+                label = "Delete note",
+                icon = Icons.Default.Delete,
+                color = colors.error,
+                onClick = {
+                    menuOpen = false
+                    showDeleteDialog = true
+                }
+            )
+        }
+    }
+
+    // View-mode still uses a simple more button; edit-mode uses SplitButton (Done + menu).
     val moreMenu: @Composable () -> Unit = {
         Box {
             TipIconButton(label = "More", onClick = { menuOpen = true }) {
@@ -1424,44 +1469,7 @@ fun NoteEditorView(
                 offset = DpOffset(0.dp, 8.dp),
                 shape = MaterialTheme.shapes.largeIncreased,
             ) {
-                MoreMenuItem(
-                    label = "Find in note",
-                    icon = Icons.Default.Search,
-                    onClick = {
-                        menuOpen = false
-                        panel = Panel.None
-                        findOpen = true
-                    }
-                )
-                MoreMenuItem(
-                    label = "Share",
-                    icon = Icons.Default.Share,
-                    enabled = canSave,
-                    onClick = {
-                        menuOpen = false
-                        shareNote()
-                    }
-                )
-                MoreMenuItem(
-                    label = "Copy text",
-                    icon = Icons.Default.ContentCopy,
-                    enabled = canSave,
-                    onClick = {
-                        menuOpen = false
-                        copyNote()
-                    }
-                )
-                if (onDelete != null && noteId != null) {
-                    MoreMenuItem(
-                        label = "Delete note",
-                        icon = Icons.Default.Delete,
-                        color = colors.error,
-                        onClick = {
-                            menuOpen = false
-                            showDeleteDialog = true
-                        }
-                    )
-                }
+                moreMenuContent()
             }
         }
     }
@@ -1519,14 +1527,52 @@ fun NoteEditorView(
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
                             }
-                            moreMenu()
-                            // Primary action: filled tonal icon button (M3), so it stands out from Undo / Redo
-                            TipTonalIconButton(
-                                label = "Done",
-                                onClick = { finishEditing() },
-                                enabled = canSave
-                            ) {
-                                Icon(Icons.Default.Check, contentDescription = "Done")
+                            // Primary action + secondary options as a Material 3 Expressive SplitButton.
+                            // Leading = Done (save & leave edit mode). Trailing expands Share / Copy / Find / Delete.
+                            Box {
+                                SplitButtonLayout(
+                                    leadingButton = {
+                                        SplitButtonDefaults.TonalLeadingButton(
+                                            onClick = { finishEditing() },
+                                            enabled = canSave,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize),
+                                            )
+                                            Spacer(Modifier.size(ButtonDefaults.IconSpacing))
+                                            Text("Done")
+                                        }
+                                    },
+                                    trailingButton = {
+                                        SplitButtonDefaults.TonalTrailingButton(
+                                            checked = menuOpen,
+                                            onCheckedChange = { menuOpen = it },
+                                        ) {
+                                            val rotation by animateFloatAsState(
+                                                targetValue = if (menuOpen) 180f else 0f,
+                                                label = "splitTrailingRotation",
+                                            )
+                                            Icon(
+                                                Icons.Default.KeyboardArrowDown,
+                                                contentDescription = "More options",
+                                                modifier = Modifier
+                                                    .size(SplitButtonDefaults.TrailingIconSize)
+                                                    .graphicsLayer { rotationZ = rotation },
+                                            )
+                                        }
+                                    },
+                                )
+                                DropdownMenu(
+                                    expanded = menuOpen,
+                                    onDismissRequest = { menuOpen = false },
+                                    modifier = Modifier.widthIn(min = 216.dp),
+                                    offset = DpOffset(0.dp, 8.dp),
+                                    shape = MaterialTheme.shapes.largeIncreased,
+                                ) {
+                                    moreMenuContent()
+                                }
                             }
                         } else {
                             TipTonalIconButton(label = "Edit", onClick = { enterEditMode() }) {

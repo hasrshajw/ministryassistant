@@ -46,6 +46,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudDownload
@@ -220,6 +221,7 @@ fun BackupScreen(onBack: () -> Unit) {
                 task = task,
                 prefs = prefs,
                 onBackupNow = { start { BackupRepository.backup(context) } },
+                onExport = { exportLauncher.launch("ministry-assistant-backup.zip") },
                 onCancel = BackupRepository::cancel,
                 onDismiss = BackupRepository::dismissTask,
                 onRetry = {
@@ -425,6 +427,7 @@ private fun BackupHero(
     task: BackupTask,
     prefs: BackupPrefs,
     onBackupNow: () -> Unit,
+    onExport: () -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
@@ -502,28 +505,80 @@ private fun BackupHero(
                                 )
                             }
                         }
-                        Button(
-                            onClick = onBackupNow,
-                            shapes = ButtonDefaults.shapes(),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                        ) {
-                            Icon(
-                                if (toDrive) Icons.Outlined.CloudUpload else Icons.Outlined.Backup,
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.IconSize),
-                            )
-                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                            Text(
-                                when {
-                                    toDrive -> "Back up to Google Drive"
-                                    hasBackup -> "Back up to this device"
-                                    else -> "Create first backup"
+                        // Primary action + secondary options as M3 Expressive SplitButton.
+                        // Leading = run backup. Trailing expands Export (and related actions).
+                        var splitMenuOpen by remember { mutableStateOf(false) }
+                        val size = SplitButtonDefaults.MediumContainerHeight
+                        Box(Modifier = Modifier.fillMaxWidth()) {
+                            SplitButtonLayout(
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingButton = {
+                                    SplitButtonDefaults.LeadingButton(
+                                        onClick = onBackupNow,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(size),
+                                        shapes = SplitButtonDefaults.leadingButtonShapesFor(size),
+                                        contentPadding = SplitButtonDefaults.leadingButtonContentPaddingFor(size),
+                                    ) {
+                                        Icon(
+                                            if (toDrive) Icons.Outlined.CloudUpload else Icons.Outlined.Backup,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(
+                                                SplitButtonDefaults.leadingButtonIconSizeFor(size)
+                                            ),
+                                        )
+                                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                        Text(
+                                            when {
+                                                toDrive -> "Back up to Google Drive"
+                                                hasBackup -> "Back up to this device"
+                                                else -> "Create first backup"
+                                            },
+                                            style = typography.labelLargeEmphasized,
+                                            maxLines = 1,
+                                        )
+                                    }
                                 },
-                                style = typography.labelLargeEmphasized,
-                                maxLines = 1,
+                                trailingButton = {
+                                    SplitButtonDefaults.TrailingButton(
+                                        checked = splitMenuOpen,
+                                        onCheckedChange = { splitMenuOpen = it },
+                                        modifier = Modifier.heightIn(size),
+                                        shapes = SplitButtonDefaults.trailingButtonShapesFor(size),
+                                        contentPadding = SplitButtonDefaults.trailingButtonContentPaddingFor(size),
+                                    ) {
+                                        val rotation by animateFloatAsState(
+                                            targetValue = if (splitMenuOpen) 180f else 0f,
+                                            label = "backupSplitRotation",
+                                        )
+                                        Icon(
+                                            Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "More backup options",
+                                            modifier = Modifier
+                                                .size(SplitButtonDefaults.trailingButtonIconSizeFor(size))
+                                                .graphicsLayer { rotationZ = rotation },
+                                        )
+                                    }
+                                },
                             )
+                            DropdownMenu(
+                                expanded = splitMenuOpen,
+                                onDismissRequest = { splitMenuOpen = false },
+                                modifier = Modifier.widthIn(min = 220.dp),
+                                shape = MaterialTheme.shapes.largeIncreased,
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Export data") },
+                                    onClick = {
+                                        splitMenuOpen = false
+                                        onExport()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.FileUpload, contentDescription = null)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
