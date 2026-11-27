@@ -516,7 +516,6 @@ private fun BackupHero(
                                     SplitButtonDefaults.LeadingButton(
                                         onClick = onBackupNow,
                                         modifier = Modifier
-                                            .weight(1f)
                                             .heightIn(size),
                                         shapes = SplitButtonDefaults.leadingButtonShapesFor(size),
                                         contentPadding = SplitButtonDefaults.leadingButtonContentPaddingFor(size),
