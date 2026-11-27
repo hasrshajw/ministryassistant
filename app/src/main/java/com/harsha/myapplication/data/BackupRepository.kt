@@ -297,7 +297,8 @@ object BackupRepository {
     private fun dataRoot(ctx: Context): File = ctx.filesDir.parentFile ?: ctx.filesDir
 
     private fun isExcluded(name: String) =
-        name.startsWith("shared_prefs/backup_prefs") || name.startsWith("files/backups/")
+        name.startsWith("shared_prefs/backup_prefs") || name.startsWith("files/backups/") ||
+            name.startsWith("shared_prefs/app_lock_prefs") // PIN hashes never leave the phone
 
     private suspend fun writeZip(ctx: Context, out: OutputStream, onProgress: (Float) -> Unit) {
         val root = dataRoot(ctx)
