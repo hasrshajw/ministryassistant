@@ -7,6 +7,9 @@ import android.content.Intent
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.harsha.myapplication.data.DriveBackup
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.auth.api.signin.GoogleSignIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -59,7 +62,6 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -118,6 +120,7 @@ fun BackupScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         BackupRepository.dismissTask()
         BackupRepository.refreshSnapshots(context)
+        BackupRepository.refreshDriveSession(context)
     }
 
     /** Runs an action and scrolls to the hero card so the progress animation is always visible. */
@@ -137,6 +140,29 @@ fun BackupScreen(onBack: () -> Unit) {
         if (uri != null) {
             confirm = "This replaces your current notes, settings and progress with the backup." to
                 { BackupRepository.importFrom(context, uri) }
+        }
+    }
+
+    val driveSignInLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            val account = task.getResult(ApiException::class.java)
+            if (account != null && DriveBackup.hasAppDataScope(account)) {
+                BackupRepository.onDriveConnected(account.email)
+            } else {
+                BackupRepository.onDriveConnectFailed(
+                    "Drive permission was not granted. Try Connect again and allow access."
+                )
+            }
+        } catch (e: ApiException) {
+            BackupRepository.onDriveConnectFailed(
+                if (e.statusCode == 12501) null // user cancelled
+                else (e.message ?: "Google Sign-In failed (${e.statusCode})")
+            )
+        } catch (e: Exception) {
+            BackupRepository.onDriveConnectFailed(e.message ?: "Google Sign-In failed")
         }
     }
 
@@ -268,7 +294,10 @@ fun BackupScreen(onBack: () -> Unit) {
                                 subtitle = "Keep a safe copy in your Drive",
                                 enabled = !BackupRepository.driveConnecting,
                                 showChevron = !BackupRepository.driveConnecting,
-                                onClick = BackupRepository::connectDriveDemo,
+                                onClick = {
+                                    BackupRepository.beginDriveConnect()
+                                    driveSignInLauncher.launch(DriveBackup.signInIntent(context))
+                                },
                                 trailing = if (BackupRepository.driveConnecting) loadingTrailing else null,
                             )
                         }
@@ -280,7 +309,7 @@ fun BackupScreen(onBack: () -> Unit) {
                                 subtitle = prefs.driveAccount ?: "Connected",
                                 onClick = {},
                                 trailing = {
-                                    TextButton(onClick = BackupRepository::disconnectDrive) { Text("Disconnect") }
+                                    TextButton(onClick = { BackupRepository.disconnectDrive(context) }) { Text("Disconnect") }
                                 },
                             )
                             BkRow(
@@ -289,10 +318,7 @@ fun BackupScreen(onBack: () -> Unit) {
                                 enabled = !running, showChevron = true,
                                 onClick = {
                                     start {
-                                        BackupRepository.runDemo(
-                                            BackupKind.Backup, "Google Drive",
-                                            steps = listOf("Preparing data", "Encrypting", "Uploading to Drive", "Verifying copy"),
-                                        )
+                                        BackupRepository.backupToDrive(context)
                                     }
                                 },
                             )
@@ -302,10 +328,7 @@ fun BackupScreen(onBack: () -> Unit) {
                                 enabled = !running, showChevron = true,
                                 onClick = {
                                     confirm = "This would replace your current data with the copy in Drive." to {
-                                        BackupRepository.runDemo(
-                                            BackupKind.Restore, "Google Drive",
-                                            steps = listOf("Finding latest copy", "Downloading", "Verifying", "Restoring data"),
-                                        )
+                                        start { BackupRepository.restoreFromDrive(context) }
                                     }
                                 },
                             )
@@ -314,7 +337,7 @@ fun BackupScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Preview: Drive sync is simulated until the Google Drive API is connected.",
+                    "Backups are stored in a private app folder on Drive — only this app can see them.",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp),
@@ -379,43 +402,6 @@ fun BackupScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(Modifier.height(BkSectionGap))
-
-            // ── Demo ──
-            Column(Modifier.revealOnEnter(index = 4, playOnceKey = "backup-demo")) {
-                BkHeader("Try the animations")
-                Spacer(Modifier.height(8.dp))
-                BkGroup {
-                    BkRow(
-                        pos = BkPos(first = true, last = false), tone = BkTone.Primary,
-                        icon = Icons.Outlined.Science, title = "Demo backup",
-                        subtitle = "Fake data, real progress animation",
-                        enabled = !running, showChevron = true,
-                        onClick = { start { BackupRepository.runDemo(BackupKind.Backup) } },
-                    )
-                    BkRow(
-                        pos = BkPos(first = false, last = false), tone = BkTone.Primary,
-                        icon = Icons.Outlined.Restore, title = "Demo restore",
-                        subtitle = "Watch a restore play out",
-                        enabled = !running, showChevron = true,
-                        onClick = { start { BackupRepository.runDemo(BackupKind.Restore) } },
-                    )
-                    BkRow(
-                        pos = BkPos(first = false, last = true), tone = BkTone.Error,
-                        icon = Icons.Outlined.ErrorOutline, title = "Demo failure",
-                        subtitle = "See the error state and retry",
-                        enabled = !running, showChevron = true,
-                        onClick = { start { BackupRepository.runDemo(BackupKind.Backup, fail = true) } },
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Demos never touch your real data.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                )
-            }
         }
     }
 
