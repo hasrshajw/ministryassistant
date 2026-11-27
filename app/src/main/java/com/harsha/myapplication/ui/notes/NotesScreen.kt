@@ -452,7 +452,7 @@ fun NotesScreen(
                                         if (checkedProgress > 0.5f) Icons.Default.Close else Icons.Default.Add
                                     }
                                 }
-                                Icon(icon, contentDescription = null, modifier = Modifier.animateIcon({ checkedProgress }))
+                                Icon(icon, contentDescription = null)
                             }
                         }
                     ) {
