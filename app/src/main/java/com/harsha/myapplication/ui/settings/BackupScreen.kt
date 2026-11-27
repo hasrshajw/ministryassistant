@@ -623,7 +623,7 @@ private fun RunningContent(t: BackupTask.Running, onCancel: () -> Unit) {
 
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                "${t.kind.title} ${if (t.demo && t.target == "Demo") "(demo)" else ""}".trim(),
+                t.kind.title,
                 style = typography.titleLargeEmphasized,
             )
             Text(

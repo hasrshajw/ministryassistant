@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.harsha.myapplication.*
 import com.harsha.myapplication.data.BackupRepository
+import com.harsha.myapplication.data.DriveBackup
 import com.harsha.myapplication.scripture.BibleData
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
 import com.harsha.myapplication.ui.theme.revealOnEnter
@@ -391,25 +392,41 @@ private fun PremiumUpgradeCard(
 }
 
 /**
- * Hero card: primary-container surface.
- * Tapping the card toggles a preview of the signed-in look vs the sign-in prompt.
- * Logged-in view uses a larger circular profile image and a trailing chevron.
+ * Hero card: shows real Google account state from [BackupRepository] / Drive.
+ * Signed-in: name + email from Google; tap opens Profile.
+ * Signed-out: Sign in opens Profile (where real Google Sign-In runs).
  */
 @Composable
 private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
-    var previewLoggedIn by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        BackupRepository.refreshDriveSession(context)
+    }
+
+    val prefs = BackupRepository.prefs
+    val signedIn = prefs.driveConnected && !prefs.driveAccount.isNullOrBlank()
+    val email = prefs.driveAccount.orEmpty()
+    val name = remember(signedIn, email) {
+        if (!signedIn) ""
+        else DriveBackup.lastSignedInAccount(context)?.displayName
+            ?: email.substringBefore("@").ifBlank { "Signed in" }
+    }
+    val initials = remember(name, email) {
+        when {
+            name.isNotBlank() -> name.trim().split(Regex("\\s+")).take(2)
+                .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+                .joinToString("")
+                .ifBlank { name.take(1).uppercase() }
+            email.isNotBlank() -> email.take(1).uppercase()
+            else -> "?"
+        }
+    }
 
     Card(
-        onClick = {
-            if (previewLoggedIn) {
-                // In a real app this would open the account screen; here it toggles the preview.
-                previewLoggedIn = false
-            } else {
-                previewLoggedIn = true
-            }
-        },
+        onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(ProfileCorner),
         colors = CardDefaults.cardColors(
@@ -417,8 +434,7 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
             contentColor = colors.onPrimaryContainer,
         ),
     ) {
-        if (previewLoggedIn) {
-            // ── Logged-in preview (slightly shorter card) ──
+        if (signedIn) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -426,7 +442,6 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // Circular profile image
                 Surface(
                     shape = CircleShape,
                     color = colors.primary,
@@ -434,7 +449,7 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            "HV",
+                            initials,
                             style = typography.titleMediumEmphasized,
                             color = colors.onPrimary,
                         )
@@ -444,11 +459,13 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(1.dp),
                 ) {
-                    Text("HarshaVardhan", style = typography.titleMediumEmphasized)
+                    Text(name, style = typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "you@example.com",
+                        email,
                         style = typography.bodyMedium,
                         color = colors.onPrimaryContainer.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 Icon(
@@ -459,7 +476,6 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                 )
             }
         } else {
-            // ── Signed-out (default) ──
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -488,18 +504,14 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                     ) {
                         Text("Welcome", style = typography.titleLargeEmphasized)
                         Text(
-                            "Sync your settings and progress across devices",
+                            "Sign in with Google to back up privately to Drive",
                             style = typography.bodyMedium,
                             color = colors.onPrimaryContainer.copy(alpha = 0.8f),
                         )
                     }
                 }
                 Button(
-                    onClick = {
-                        // Real sign-in action; also flips preview so you can see the logged-in look.
-                        onClick()
-                        previewLoggedIn = true
-                    },
+                    onClick = onClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),

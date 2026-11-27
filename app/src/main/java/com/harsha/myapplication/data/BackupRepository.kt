@@ -81,7 +81,6 @@ sealed interface BackupTask {
         val steps: List<String>,
         val stepIndex: Int,
         val progress: Float?,
-        val demo: Boolean,
     ) : BackupTask
 
     data class Done(val kind: BackupKind, val message: String, val needsRestart: Boolean = false) : BackupTask
@@ -185,14 +184,13 @@ object BackupRepository {
         kind: BackupKind,
         target: String,
         steps: List<String>,
-        demo: Boolean = false,
         block: suspend (BackupReport) -> BackupTaskResult,
     ) {
         job?.cancel()
         job = scope.launch {
-            task = BackupTask.Running(kind, target, steps, 0, null, demo)
+            task = BackupTask.Running(kind, target, steps, 0, null)
             try {
-                val result = block { i, p -> task = BackupTask.Running(kind, target, steps, i, p, demo) }
+                val result = block { i, p -> task = BackupTask.Running(kind, target, steps, i, p) }
                 task = BackupTask.Done(kind, result.message, result.needsRestart)
             } catch (e: CancellationException) {
                 throw e
