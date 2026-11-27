@@ -700,7 +700,7 @@ private fun ImportCard(importing: Boolean, onClick: () -> Unit) {
                 enter = fadeIn(Motion.effectsFast) + expandVertically(Motion.spatialDefault<IntSize>()),
                 exit = fadeOut(Motion.effectsFast) + shrinkVertically(Motion.spatialFast<IntSize>())
             ) {
-                LinearProgressIndicator(
+                LinearWavyProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 16.dp)
@@ -900,10 +900,9 @@ private fun DownloadableBibleRow(
 
                                 DownloadPhase.Downloading -> {
                                     if (determinate) {
-                                        CircularProgressIndicator(
+                                        CircularWavyProgressIndicator(
                                             progress = { progress },
                                             modifier = Modifier.size(44.dp),
-                                            strokeWidth = 4.dp,
                                             trackColor = colors.secondaryContainer
                                         )
                                         Text(

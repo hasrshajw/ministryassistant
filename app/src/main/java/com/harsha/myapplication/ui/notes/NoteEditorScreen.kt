@@ -2063,13 +2063,15 @@ fun NoteEditorView(
                         .background(colors.surfaceContainer)
                         .bottomInset(barBottomPx)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .padding(horizontal = 12.dp),
+                    // Material 3 Expressive flexible bottom app bar. Insets are handled by the
+                    // surrounding Column (keyboard / nav bar), so none are added here.
+                    FlexibleBottomAppBar(
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = Color.Transparent,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        expandedHeight = 56.dp,
+                        windowInsets = WindowInsets(0, 0, 0, 0)
                     ) {
                         // Filled with the theme's primary (the app's dark green), like Save / Close.
                         Button(

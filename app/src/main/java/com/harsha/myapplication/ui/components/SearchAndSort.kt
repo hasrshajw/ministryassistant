@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.harsha.myapplication.ui.components
 
 import androidx.compose.animation.AnimatedContent
@@ -21,12 +23,15 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -69,41 +74,44 @@ internal fun AppSearchField(
         }
     }
 
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
+    // Material 3 search bar (DockedSearchBar + SearchBarDefaults.InputField) so the field picks up
+    // the official search tokens: shape, height, colours and the expressive state layers.
+    // Results are shown live in the screen's own list, so the bar never expands into a dropdown.
+    DockedSearchBar(
         modifier = modifier,
-        singleLine = true,
-        shape = RoundedCornerShape(28.dp),
-        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = Lexend),
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon = {
-            if (!isEmpty) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
-                }
-            }
+        expanded = false,
+        onExpandedChange = {},
+        inputField = {
+            SearchBarDefaults.InputField(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSearch = { onSearch() },
+                expanded = false,
+                onExpandedChange = {},
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (!isEmpty) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                placeholder = {
+                    Row {
+                        Text("Search by ", fontFamily = Lexend)
+                        AnimatedContent(
+                            targetState = hints[hintIndex % hints.size],
+                            transitionSpec = {
+                                (slideInVertically(tween(350)) { (it * 0.6).toInt() } + fadeIn(tween(350))) togetherWith
+                                        (slideOutVertically(tween(350)) { (-it * 0.6).toInt() } + fadeOut(tween(350)))
+                            },
+                            label = "searchHint",
+                        ) { Text(it, fontFamily = Lexend) }
+                    }
+                },
+            )
         },
-        placeholder = {
-            Row {
-                Text("Search by ", fontFamily = Lexend)
-                AnimatedContent(
-                    targetState = hints[hintIndex % hints.size],
-                    transitionSpec = {
-                        (slideInVertically(tween(350)) { (it * 0.6).toInt() } + fadeIn(tween(350))) togetherWith
-                                (slideOutVertically(tween(350)) { (-it * 0.6).toInt() } + fadeOut(tween(350)))
-                    },
-                    label = "searchHint",
-                ) { Text(it, fontFamily = Lexend) }
-            }
-        },
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-        colors = TextFieldDefaults.colors(
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        ),
+        content = {},
     )
 }
 

@@ -94,7 +94,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -866,10 +866,9 @@ private fun BibleSourceRow(
             }
             when {
                 state is BibleDownloads.State.Downloading && state.progress >= 0f ->
-                    CircularProgressIndicator(
+                    CircularWavyProgressIndicator(
                         progress = { state.progress },
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp
+                        modifier = Modifier.size(28.dp)
                     )
                 state is BibleDownloads.State.Downloading || state is BibleDownloads.State.Importing ->
                     LoadingIndicator(modifier = Modifier.size(28.dp))
