@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "642904120818",
+    "project_id": "schedy-congegation",
+    "storage_bucket": "schedy-congegation.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:642904120818:android:daaec74d9ca734a3d41f6b",
+        "android_client_info": {
+          "package_name": "com.harsha.myapplication"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "642904120818-ecbjum8tsb570inv7adu9ih51hul1rap.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.harsha.myapplication",
+            "certificate_hash": "aa8fa356793cfb5347a9fa7cf3189ef48fea0974"
+          }
+        },
+        {
+          "client_id": "642904120818-3ohu2dmec44j6nvb6kma4naviulb0ugt.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3ecYCGnRVkHegl-ohByE2uooSF3xxDU4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "642904120818-3ohu2dmec44j6nvb6kma4naviulb0ugt.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

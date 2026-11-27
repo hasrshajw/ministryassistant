@@ -19,6 +19,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
   <application
+    android:name=".MinistryApplication"
     android:allowBackup="true"
     android:dataExtractionRules="@xml/data_extraction_rules"
     android:fullBackupContent="@xml/backup_rules"
@@ -60,6 +61,23 @@
       android:name=".scripture.BibleDownloadService"
       android:exported="false"
       android:foregroundServiceType="dataSync" />
+
+    <!-- Firebase Cloud Messaging -->
+    <service
+      android:name=".notifications.MyFirebaseMessagingService"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+
+    <!-- Default FCM notification channel / icon meta-data (optional but recommended) -->
+    <meta-data
+      android:name="com.google.firebase.messaging.default_notification_channel_id"
+      android:value="fcm_default" />
+    <meta-data
+      android:name="com.google.firebase.messaging.default_notification_icon"
+      android:resource="@mipmap/ic_launcher" />
   </application>
 
 </manifest>
