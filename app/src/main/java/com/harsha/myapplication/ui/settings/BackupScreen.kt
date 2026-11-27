@@ -207,74 +207,8 @@ fun BackupScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(BkSectionGap))
 
-            // ── On this device ──
-            Column(Modifier.revealOnEnter(index = 1, playOnceKey = "backup-local")) {
-                BkHeader("Export & import")
-                Spacer(Modifier.height(8.dp))
-                BkGroup {
-                    BkRow(
-                        pos = BkPos(first = true, last = false), tone = BkTone.Tertiary,
-                        icon = Icons.Outlined.FileUpload, title = "Export data",
-                        subtitle = "Save a backup file anywhere you like",
-                        enabled = !running, showChevron = true,
-                        onClick = { exportLauncher.launch(BackupRepository.suggestedFileName()) },
-                    )
-                    BkRow(
-                        pos = BkPos(first = false, last = true), tone = BkTone.Tertiary,
-                        icon = Icons.Outlined.FileDownload, title = "Import data",
-                        subtitle = "Restore from a backup file",
-                        enabled = !running, showChevron = true,
-                        onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
-                    )
-                }
-            }
-
-            // ── Recent backups on this device ──
-            AnimatedVisibility(
-                visible = snapshots.isNotEmpty(),
-                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
-                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
-                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
-                    fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
-            ) {
-                Column {
-                    Spacer(Modifier.height(BkSectionGap))
-                    BkHeader("Recent backups")
-                    Spacer(Modifier.height(8.dp))
-                    val shown = snapshots.take(5)
-                    BkGroup {
-                        shown.forEachIndexed { i, snap ->
-                            BkRow(
-                                pos = BkPos(first = i == 0, last = i == shown.lastIndex),
-                                tone = BkTone.Neutral,
-                                icon = Icons.Outlined.History,
-                                title = android.text.format.DateUtils.formatDateTime(
-                                    context, snap.time,
-                                    android.text.format.DateUtils.FORMAT_SHOW_DATE or
-                                        android.text.format.DateUtils.FORMAT_SHOW_TIME or
-                                        android.text.format.DateUtils.FORMAT_ABBREV_MONTH
-                                ),
-                                subtitle = Formatter.formatShortFileSize(context, snap.bytes) + " · tap to restore",
-                                enabled = !running,
-                                onClick = {
-                                    confirm = "Restore the backup from this date? Current data will be replaced." to
-                                        { BackupRepository.restoreSnapshot(context, snap) }
-                                },
-                                trailing = {
-                                    IconButton(onClick = { BackupRepository.deleteSnapshot(context, snap) }) {
-                                        Icon(Icons.Outlined.Delete, contentDescription = "Delete backup")
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(BkSectionGap))
-
-            // ── Google Drive ──
-            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "backup-drive")) {
+            // ── Google Drive (top) ──
+            Column(Modifier.revealOnEnter(index = 1, playOnceKey = "backup-drive")) {
                 BkHeader("Google Drive")
                 Spacer(Modifier.height(8.dp))
                 val loadingTrailing: @Composable () -> Unit = { LoadingIndicator(Modifier.size(40.dp)) }
@@ -346,8 +280,8 @@ fun BackupScreen(onBack: () -> Unit) {
 
             Spacer(Modifier.height(BkSectionGap))
 
-            // ── Automatic backup ──
-            Column(Modifier.revealOnEnter(index = 3, playOnceKey = "backup-auto")) {
+            // ── Automatic backup (top) ──
+            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "backup-auto")) {
                 BkHeader("Automatic backup")
                 Spacer(Modifier.height(8.dp))
                 val motion = MaterialTheme.motionScheme
@@ -385,7 +319,7 @@ fun BackupScreen(onBack: () -> Unit) {
                             BkPanel(BkPos(first = false, last = true)) {
                                 Text("Keep last", style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "Older backups on this device are removed automatically",
+                                    "Only the most recent backups are kept on this device",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = colors.onSurfaceVariant,
                                 )
@@ -399,6 +333,72 @@ fun BackupScreen(onBack: () -> Unit) {
                             }
                         }
                     }
+                }
+            }
+
+            // ── Recent backups only (not a full archive list) ──
+            AnimatedVisibility(
+                visible = snapshots.isNotEmpty(),
+                enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec()),
+                exit = shrinkVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+            ) {
+                Column {
+                    Spacer(Modifier.height(BkSectionGap))
+                    BkHeader("Recent backups")
+                    Spacer(Modifier.height(8.dp))
+                    val shown = snapshots.take(prefs.keepLast.coerceIn(1, 5))
+                    BkGroup {
+                        shown.forEachIndexed { i, snap ->
+                            BkRow(
+                                pos = BkPos(first = i == 0, last = i == shown.lastIndex),
+                                tone = BkTone.Neutral,
+                                icon = Icons.Outlined.History,
+                                title = android.text.format.DateUtils.formatDateTime(
+                                    context, snap.time,
+                                    android.text.format.DateUtils.FORMAT_SHOW_DATE or
+                                        android.text.format.DateUtils.FORMAT_SHOW_TIME or
+                                        android.text.format.DateUtils.FORMAT_ABBREV_MONTH
+                                ),
+                                subtitle = Formatter.formatShortFileSize(context, snap.bytes) + " · tap to restore",
+                                enabled = !running,
+                                onClick = {
+                                    confirm = "Restore the backup from this date? Current data will be replaced." to
+                                        { BackupRepository.restoreSnapshot(context, snap) }
+                                },
+                                trailing = {
+                                    IconButton(onClick = { BackupRepository.deleteSnapshot(context, snap) }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Delete backup")
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(BkSectionGap))
+
+            // ── Export & import (below Drive / auto) ──
+            Column(Modifier.revealOnEnter(index = 3, playOnceKey = "backup-local")) {
+                BkHeader("Export & import")
+                Spacer(Modifier.height(8.dp))
+                BkGroup {
+                    BkRow(
+                        pos = BkPos(first = true, last = false), tone = BkTone.Tertiary,
+                        icon = Icons.Outlined.FileUpload, title = "Export data",
+                        subtitle = "Save a backup file anywhere you like",
+                        enabled = !running, showChevron = true,
+                        onClick = { exportLauncher.launch(BackupRepository.suggestedFileName()) },
+                    )
+                    BkRow(
+                        pos = BkPos(first = false, last = true), tone = BkTone.Tertiary,
+                        icon = Icons.Outlined.FileDownload, title = "Import data",
+                        subtitle = "Restore from a backup file",
+                        enabled = !running, showChevron = true,
+                        onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                    )
                 }
             }
 
