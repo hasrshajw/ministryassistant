@@ -44,11 +44,13 @@ data class BackupPrefs(
     val autoBackup: Boolean = false,
     val frequency: BackupFrequency = BackupFrequency.WEEKLY,
     val wifiOnly: Boolean = true,
-    val keepLast: Int = 5,
     val driveConnected: Boolean = false,
     val driveAccount: String? = null,
+    val drivePhoto: String? = null,
     val lastBackupMillis: Long = 0L,
     val lastBackupBytes: Long = 0L,
+    /** Where the last backup went: "Google Drive", "This device" or "A file". */
+    val lastBackupTarget: String? = null,
 ) {
     /** "2 days ago", "5 minutes ago"… */
     fun lastBackupLabel(): String =
@@ -69,7 +71,7 @@ enum class BackupKind(val title: String) {
     Restore("Restoring"),
 }
 
-/** One automatic / manual snapshot stored on this device. */
+/** The one backup file stored on this device. */
 data class BackupSnapshot(val file: File, val time: Long, val bytes: Long)
 
 sealed interface BackupTask {
@@ -98,7 +100,7 @@ private val BACKUP_DATA_DIRS = listOf("shared_prefs", "files", "databases")
 
 /**
  * Backup / restore state + logic. Same pattern as AppearanceRepository: call [init] once from
- * MainActivity.onCreate. [prefs], [task] and [snapshots] are Compose state.
+ * MainActivity.onCreate. [prefs], [task] and [localBackup] are Compose state.
  *
  * What a backup contains: every file in the app's private `shared_prefs`, `files` and `databases`
  * folders (notes, people, settings, progress…), zipped with a manifest. Restoring overwrites those
@@ -109,11 +111,12 @@ object BackupRepository {
     private const val K_AUTO = "auto"
     private const val K_FREQ = "freq"
     private const val K_WIFI = "wifi_only"
-    private const val K_KEEP = "keep_last"
+    private const val K_PHOTO = "drive_photo"
     private const val K_DRIVE = "drive_connected"
     private const val K_ACCOUNT = "drive_account"
     private const val K_LAST = "last_backup"
     private const val K_LAST_BYTES = "last_bytes"
+    private const val K_LAST_TARGET = "last_target"
 
     private var store: SharedPreferences? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -123,7 +126,8 @@ object BackupRepository {
         private set
     var task by mutableStateOf<BackupTask>(BackupTask.Idle)
         private set
-    var snapshots by mutableStateOf<List<BackupSnapshot>>(emptyList())
+    /** The single on-device backup file (null when none exists yet). */
+    var localBackup by mutableStateOf<BackupSnapshot?>(null)
         private set
     var driveConnecting by mutableStateOf(false)
         private set
@@ -138,20 +142,20 @@ object BackupRepository {
                 ?.let { CrashReporter.attempt("BackupRepository") { BackupFrequency.valueOf(it) }.getOrNull() }
                 ?: BackupFrequency.WEEKLY,
             wifiOnly = sp.getBoolean(K_WIFI, true),
-            keepLast = sp.getInt(K_KEEP, 5),
             driveConnected = sp.getBoolean(K_DRIVE, false),
             driveAccount = sp.getString(K_ACCOUNT, null),
+            drivePhoto = sp.getString(K_PHOTO, null),
             lastBackupMillis = sp.getLong(K_LAST, 0L),
             lastBackupBytes = sp.getLong(K_LAST_BYTES, 0L),
+            lastBackupTarget = sp.getString(K_LAST_TARGET, null),
         )
-        refreshSnapshots(context)
+        refreshLocalBackup(context)
     }
 
     // ── settings ──
     fun setAutoBackup(on: Boolean) = update { it.copy(autoBackup = on) }
     fun setFrequency(f: BackupFrequency) = update { it.copy(frequency = f) }
     fun setWifiOnly(on: Boolean) = update { it.copy(wifiOnly = on) }
-    fun setKeepLast(n: Int) = update { it.copy(keepLast = n) }
 
     private fun update(transform: (BackupPrefs) -> BackupPrefs) {
         val next = transform(prefs)
@@ -160,16 +164,19 @@ object BackupRepository {
             ?.putBoolean(K_AUTO, next.autoBackup)
             ?.putString(K_FREQ, next.frequency.name)
             ?.putBoolean(K_WIFI, next.wifiOnly)
-            ?.putInt(K_KEEP, next.keepLast)
+            ?.putString(K_PHOTO, next.drivePhoto)
             ?.putBoolean(K_DRIVE, next.driveConnected)
             ?.putString(K_ACCOUNT, next.driveAccount)
             ?.putLong(K_LAST, next.lastBackupMillis)
             ?.putLong(K_LAST_BYTES, next.lastBackupBytes)
+            ?.putString(K_LAST_TARGET, next.lastBackupTarget)
             ?.apply()
     }
 
-    private fun markBackedUp(bytes: Long) =
-        update { it.copy(lastBackupMillis = System.currentTimeMillis(), lastBackupBytes = bytes) }
+    private fun markBackedUp(bytes: Long, target: String) =
+        update {
+            it.copy(lastBackupMillis = System.currentTimeMillis(), lastBackupBytes = bytes, lastBackupTarget = target)
+        }
 
     // ── task control ──
     fun dismissTask() {
@@ -207,45 +214,60 @@ object BackupRepository {
     fun suggestedFileName(): String =
         "study-backup-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".zip"
 
-    private fun snapshotDir(ctx: Context): File =
+    private const val LOCAL_NAME = "backup.zip"
+
+    private fun backupDir(ctx: Context): File =
         File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "backups")
 
-    fun refreshSnapshots(ctx: Context) {
-        snapshots = snapshotDir(ctx.applicationContext)
-            .listFiles { f -> f.extension == "zip" }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { BackupSnapshot(it, it.lastModified(), it.length()) }
-            ?: emptyList()
+    private fun localFile(ctx: Context): File = File(backupDir(ctx), LOCAL_NAME)
+
+    fun refreshLocalBackup(ctx: Context) {
+        val f = localFile(ctx.applicationContext)
+        localBackup = if (f.isFile) BackupSnapshot(f, f.lastModified(), f.length()) else null
     }
 
-    fun deleteSnapshot(ctx: Context, snapshot: BackupSnapshot) {
-        snapshot.file.delete()
-        refreshSnapshots(ctx)
-    }
-
-    /** Quick backup into the app's backup folder (no file picker). */
+    /**
+     * Backs up into ONE file on this device. The new zip is written to a temp file, verified,
+     * and only then replaces the old backup, so a failed run never destroys the previous copy.
+     */
     fun backupNow(ctx: Context) {
         val app = ctx.applicationContext
-        val file = File(snapshotDir(app).apply { mkdirs() }, suggestedFileName())
+        val dir = backupDir(app).apply { mkdirs() }
+        val file = File(dir, LOCAL_NAME)
+        val tmp = File(dir, "$LOCAL_NAME.tmp")
         launchTask(BackupKind.Backup, "this device", listOf("Collecting files", "Compressing", "Verifying")) { report ->
             withContext(Dispatchers.IO) {
                 report(0, null)
-                FileOutputStream(file).use { writeZip(app, it) { p -> report(1, p) } }
-                report(2, null)
-                verifyZip { file.inputStream() }
-                markBackedUp(file.length())
-                prune(app)
+                try {
+                    FileOutputStream(tmp).use { writeZip(app, it) { p -> report(1, p) } }
+                    report(2, null)
+                    verifyZip { tmp.inputStream() }
+                    if (!tmp.renameTo(file)) tmp.copyTo(file, overwrite = true)
+                    markBackedUp(file.length(), "This device")
+                    // Clean up zips left over from the old multi-backup behaviour.
+                    dir.listFiles { f -> f.extension == "zip" && f.name != LOCAL_NAME }?.forEach { it.delete() }
+                } finally {
+                    tmp.delete()
+                }
             }
-            refreshSnapshots(app)
+            refreshLocalBackup(app)
             BackupTaskResult("Backup saved on this device")
         }
     }
 
-    private fun prune(app: Context) {
-        snapshotDir(app).listFiles { f -> f.extension == "zip" }
-            ?.sortedByDescending { it.lastModified() }
-            ?.drop(prefs.keepLast.coerceAtLeast(1))
-            ?.forEach { it.delete() }
+    /** The one-tap backup: Google Drive when connected, otherwise the single file on this device. */
+    fun backup(ctx: Context) {
+        if (prefs.driveConnected) backupToDrive(ctx) else backupNow(ctx)
+    }
+
+    /** Restores from the same place [backup] writes to. */
+    fun restoreBackup(ctx: Context) {
+        if (prefs.driveConnected) restoreFromDrive(ctx) else restoreLocalBackup(ctx)
+    }
+
+    private fun clearLocalBackup(app: Context) {
+        backupDir(app).listFiles { f -> f.extension == "zip" || f.name.endsWith(".tmp") }?.forEach { it.delete() }
+        refreshLocalBackup(app)
     }
 
     /** Call once at launch: runs a snapshot when auto backup is on and one is due. */
@@ -254,7 +276,7 @@ object BackupRepository {
         if (!p.autoBackup || task is BackupTask.Running) return
         val due = p.lastBackupMillis == 0L ||
             System.currentTimeMillis() - p.lastBackupMillis >= p.frequency.days * BACKUP_DAY_MS
-        if (due) backupNow(ctx)
+        if (due) backup(ctx)
     }
 
     // ───────────── Real: export / import a file ─────────────
@@ -270,7 +292,7 @@ object BackupRepository {
                 report(2, null)
                 verifyZip { app.contentResolver.openInputStream(uri) ?: throw IOException("Couldn't read the file back") }
                 val size = app.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L
-                markBackedUp(size)
+                markBackedUp(size, "A file")
             }
             BackupTaskResult("Backup file saved")
         }
@@ -281,8 +303,13 @@ object BackupRepository {
         restore(app) { app.contentResolver.openInputStream(uri) ?: throw IOException("Couldn't open that file") }
     }
 
-    fun restoreSnapshot(ctx: Context, snapshot: BackupSnapshot) {
-        restore(ctx.applicationContext) { snapshot.file.inputStream() }
+    fun restoreLocalBackup(ctx: Context) {
+        val app = ctx.applicationContext
+        restore(app) {
+            val f = localFile(app)
+            if (!f.isFile) throw IOException("No backup found on this device")
+            f.inputStream()
+        }
     }
 
     private fun restore(app: Context, open: () -> InputStream) {
@@ -400,8 +427,8 @@ object BackupRepository {
      * account + Drive.appdata scope. Backups live in the hidden appDataFolder (not in the user's
      * visible Drive).
      */
-    fun onDriveConnected(email: String?) {
-        update { it.copy(driveConnected = true, driveAccount = email) }
+    fun onDriveConnected(email: String?, photoUrl: String? = null) {
+        update { it.copy(driveConnected = true, driveAccount = email, drivePhoto = photoUrl) }
         driveConnecting = false
     }
 
@@ -419,7 +446,7 @@ object BackupRepository {
 
     fun disconnectDrive(ctx: Context) {
         DriveBackup.signOut(ctx.applicationContext)
-        update { it.copy(driveConnected = false, driveAccount = null) }
+        update { it.copy(driveConnected = false, driveAccount = null, drivePhoto = null) }
     }
 
     /** Upload a fresh zip into Drive appDataFolder (overwrites previous app backup). */
@@ -442,7 +469,8 @@ object BackupRepository {
                     report(2, null)
                     val bytes = DriveBackup.uploadBackup(app, tmp) { p -> report(2, p) }
                     report(3, 1f)
-                    markBackedUp(bytes)
+                    markBackedUp(bytes, "Google Drive")
+                    clearLocalBackup(app) // Drive is now the only copy: no duplicate on the phone
                     BackupTaskResult("Backup saved to Google Drive (private app data)")
                 } finally {
                     tmp.delete()
@@ -488,6 +516,7 @@ object BackupRepository {
                 it.copy(
                     driveConnected = true,
                     driveAccount = account.email ?: it.driveAccount,
+                    drivePhoto = account.photoUrl?.toString() ?: it.drivePhoto,
                 )
             }
         }

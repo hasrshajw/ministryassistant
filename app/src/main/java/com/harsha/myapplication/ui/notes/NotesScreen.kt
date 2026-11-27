@@ -83,6 +83,7 @@ import com.harsha.myapplication.data.NoteItem
 import com.harsha.myapplication.ui.theme.Motion
 import com.harsha.myapplication.ui.theme.pressScale
 import com.harsha.myapplication.ui.theme.revealOnEnter
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.ui.components.AppSearchField
 import com.harsha.myapplication.ui.components.SortMenuButton
 import com.harsha.myapplication.ui.components.StudyTopBar
@@ -271,6 +272,7 @@ fun NotesScreen(
     // back gesture all drive it, and everything else is derived from it in the draw phase only.
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+    val feedback = rememberAppFeedback()
     val density = LocalDensity.current
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
     val drawerProgress = remember { Animatable(if (drawerOpen) 1f else 0f) }
@@ -294,7 +296,10 @@ fun NotesScreen(
 
     fun setDrawer(open: Boolean) {
         drawerOpen = open
-        scope.launch { drawerProgress.animateTo(if (open) 1f else 0f, Motion.spatialDefault) }
+        scope.launch {
+            drawerProgress.animateTo(if (open) 1f else 0f, Motion.spatialDefault)
+            feedback.tick()
+        }
     }
 
     // Back closes the menu first. While the finger drags from the edge the menu closes with it;
@@ -424,7 +429,7 @@ fun NotesScreen(
                     val fabSrc = remember { MutableInteractionSource() }
                     ExtendedFloatingActionButton(
                         onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            feedback.click()
                             onAddNoteClick(selectedFolderName)   // opens the editor in the selected folder
                         },
                         interactionSource = fabSrc,
@@ -464,7 +469,10 @@ fun NotesScreen(
                         SortMenuButton(
                             options = NotesSort.entries,
                             selected = sort,
-                            onSelect = { sort = it },
+                            onSelect = {
+                                feedback.select()
+                                sort = it
+                            },
                             label = { it.label },
                             icon = { it.icon },
                         )
@@ -507,7 +515,7 @@ fun NotesScreen(
                         FoldersMenuButton(
                             collapsed = foldersCollapsed,
                             onClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                feedback.click()
                                 setDrawer(true)
                             }
                         )
@@ -537,6 +545,7 @@ fun NotesScreen(
                                     count = entry.count,
                                     selected = drawerSelection == entry.key,
                                     onClick = {
+                                        feedback.select()
                                         drawerSelection = entry.key
                                         entry.folder?.let(onFolderClick)
                                     },
@@ -614,7 +623,7 @@ fun NotesScreen(
                                     NoteCard(
                                         row = row,
                                         folderColor = folderColors[row.folder.lowercase()] ?: colors.primary,
-                                        onClick = { onNoteClick(row.note) },
+                                        onClick = { feedback.click(); onNoteClick(row.note) },
                                         // Cards glide to their new slot when search filters the list and
                                         // fade in/out instead of popping. The first screenful also staggers in.
                                         modifier = Modifier

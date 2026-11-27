@@ -6,7 +6,12 @@ import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -18,21 +23,26 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Palette
@@ -44,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -54,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
@@ -67,6 +79,7 @@ import com.harsha.myapplication.ui.theme.rememberAppColorScheme
 import com.harsha.myapplication.ui.components.StudyBarIconButton
 import com.harsha.myapplication.ui.components.StudyTopBar
 import androidx.core.graphics.ColorUtils
+import kotlinx.coroutines.delay
 
 private val ScreenMargin = 16.dp
 private val SectionGap = 24.dp
@@ -85,7 +98,6 @@ fun AppearanceSettingsScreen(
     val prefs = AppearanceRepository.prefs
     val selectedTheme = prefs.themeMode
     val selectedPalette = prefs.palette
-    val selectedPaletteIndex = PaletteColors.indexOf(selectedPalette)
     val dynamicColorEnabled = prefs.dynamicColor
     val pureBlackEnabled = prefs.pureBlack
 
@@ -104,8 +116,8 @@ fun AppearanceSettingsScreen(
         AppearanceControls(
             themeMode = selectedTheme,
             onThemeModeChange = AppearanceRepository::setThemeMode,
-            selectedPaletteIndex = selectedPaletteIndex,
-            onPaletteChange = { AppearanceRepository.setPalette(PaletteColors[it]) },
+            selectedPalette = selectedPalette,
+            onPaletteChange = AppearanceRepository::setPalette,
             pureBlack = pureBlackEnabled,
             onPureBlackChange = AppearanceRepository::setPureBlack,
             dynamicEnabled = dynamicColorEnabled,
@@ -183,29 +195,27 @@ fun AppearanceSettingsScreen(
 private fun AppearanceControls(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
-    selectedPaletteIndex: Int,
-    onPaletteChange: (Int) -> Unit,
+    selectedPalette: ThemePalette,
+    onPaletteChange: (ThemePalette) -> Unit,
     pureBlack: Boolean,
     onPureBlackChange: (Boolean) -> Unit,
     dynamicEnabled: Boolean,
     onDynamicChange: (Boolean) -> Unit
 ) {
-    // Dynamic-color switch only makes sense while the "Dynamic" palette is selected
-    val showDynamicSwitch = PaletteColors[selectedPaletteIndex].isDynamic
     val dark = themeMode.isDark(isSystemInDarkTheme())
 
+    // "Default" (brand) and "Adaptive" (dynamic) are featured; every other palette scrolls.
+    val defaultPalette = remember { PaletteColors.firstOrNull { it.isBrand } ?: PaletteColors.first() }
+    val adaptivePalette = remember { PaletteColors.firstOrNull { it.isDynamic } }
+    val morePalettes = remember { PaletteColors.filter { !it.isBrand && !it.isDynamic } }
+
     Column {
-        // ── Theme / Colors ──
-        Column(Modifier.revealOnEnter(index = 1, playOnceKey = "appearance-display")) {
-            AppearanceSectionHeader("Theme & Colors")
+        // ── Theme (light / dark behaviour only) ──
+        Column(Modifier.revealOnEnter(index = 1, playOnceKey = "appearance-theme")) {
+            AppearanceSectionHeader("Theme")
             Spacer(Modifier.height(8.dp))
 
-            val rows = buildList {
-                add("mode"); add("palette"); add("pureBlack")
-                if (showDynamicSwitch) add("dynamic")
-            }
-
-            AppearanceGroupedList(items = rows) { id, pos ->
+            AppearanceGroupedList(items = listOf("mode", "pureBlack")) { id, pos ->
                 when (id) {
                     "mode" -> AppearanceListItem(
                         pos = pos,
@@ -217,30 +227,7 @@ private fun AppearanceControls(
                         }
                     )
 
-                    "palette" -> AppearanceListItem(
-                        pos = pos,
-                        leadingIcon = Icons.Outlined.Palette,
-                        title = "Color palette",
-                        onClick = {},
-                        below = {
-                            LazyRow(
-                                modifier = Modifier.height(72.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(horizontal = 4.dp)
-                            ) {
-                                itemsIndexed(PaletteColors) { index, palette ->
-                                    PaletteItem(
-                                        palette = palette,
-                                        dark = dark,
-                                        isSelected = index == selectedPaletteIndex,
-                                        onClick = { onPaletteChange(index) }
-                                    )
-                                }
-                            }
-                        }
-                    )
-
-                    "pureBlack" -> AppearanceListItem(
+                    else -> AppearanceListItem(
                         pos = pos,
                         leadingIcon = Icons.Outlined.Contrast,
                         title = "Pure black mode",
@@ -248,10 +235,73 @@ private fun AppearanceControls(
                         onClick = { onPureBlackChange(!pureBlack) },
                         trailing = { AppearanceSwitch(pureBlack, onPureBlackChange) }
                     )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(SectionGap))
+
+        // ── Palette (colours only) ──
+        Column(Modifier.revealOnEnter(index = 2, playOnceKey = "appearance-palette")) {
+            AppearanceSectionHeader("Palette")
+            Text(
+                "Choose the colors used across the app",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+
+            val rows = buildList {
+                add("featured")
+                if (morePalettes.isNotEmpty()) add("more")
+                if (selectedPalette.isDynamic) add("dynamic")
+            }
+
+            AppearanceGroupedList(items = rows) { id, pos ->
+                when (id) {
+                    "featured" -> AppearanceGroupSurface(pos) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FeaturedPaletteTile(
+                                palette = defaultPalette,
+                                label = "Default",
+                                caption = "Study green",
+                                dark = dark,
+                                selected = selectedPalette == defaultPalette,
+                                onClick = { onPaletteChange(defaultPalette) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (adaptivePalette != null) {
+                                FeaturedPaletteTile(
+                                    palette = adaptivePalette,
+                                    label = "Adaptive",
+                                    caption = "From your wallpaper",
+                                    dark = dark,
+                                    selected = selectedPalette == adaptivePalette,
+                                    onClick = { onPaletteChange(adaptivePalette) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+
+                    "more" -> AppearanceGroupSurface(pos) {
+                        MorePalettesRow(
+                            palettes = morePalettes,
+                            dark = dark,
+                            selectedPalette = selectedPalette,
+                            onPaletteChange = onPaletteChange
+                        )
+                    }
 
                     "dynamic" -> AppearanceListItem(
                         pos = pos,
-                        leadingIcon = Icons.Outlined.Palette,
+                        leadingIcon = Icons.Outlined.AutoAwesome,
                         title = "Dynamic colors",
                         subtitle = "Use system wallpaper colors (Android 12+)",
                         onClick = { onDynamicChange(!dynamicEnabled) },
@@ -302,7 +352,195 @@ private fun AppearanceSwitch(checked: Boolean, onChange: (Boolean) -> Unit) {
     )
 }
 
-// ───────────────────────── Palette item ─────────────────────────
+// ───────────────────────── Palette pieces ─────────────────────────
+
+/** Plays the "peek" nudge only once per process so revisiting the screen stays calm. */
+private var paletteNudgePlayed = false
+
+/** Default + Adaptive: big, side-by-side tiles so they read differently from the scrolling palettes. */
+@Composable
+private fun FeaturedPaletteTile(
+    palette: ThemePalette,
+    label: String,
+    caption: String,
+    dark: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    // Adaptive shows the real wallpaper colors on Android 12+ (falls back to its seed otherwise).
+    val scheme = if (palette.isDynamic) {
+        rememberAppColorScheme(palette, dark, pureBlack = false, dynamicColor = true)
+    } else remember(palette, dark) { paletteColorScheme(palette, dark) }
+
+    val container by animateColorAsState(
+        if (selected) colors.secondaryContainer else colors.surfaceContainerHigh,
+        MaterialTheme.motionScheme.defaultEffectsSpec(), label = "featuredTile"
+    )
+    val interaction = remember { MutableInteractionSource() }
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = container,
+        border = BorderStroke(2.dp, if (selected) colors.primary else Color.Transparent),
+        interactionSource = interaction,
+        modifier = modifier
+            .themePressScale(interaction, pressedScale = 0.97f)
+            .semantics { contentDescription = "$label palette" }
+    ) {
+        Box {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                PaletteSwatch(scheme, size = 44.dp)
+                Column {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                        color = if (selected) colors.onSecondaryContainer else colors.onSurface,
+                        maxLines = 1
+                    )
+                    Text(
+                        caption,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            PaletteCheck(
+                visible = selected,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+            )
+        }
+    }
+}
+
+/**
+ * The scrollable palettes. Three cues tell the user this row scrolls:
+ *  1. a "Swipe" label with a nudging arrow (hides once there is nothing more to reveal),
+ *  2. the last visible item is cut off at the card edge, with a soft fade over it,
+ *  3. a one-time nudge animation the first time the screen opens.
+ */
+@Composable
+private fun MorePalettesRow(
+    palettes: List<ThemePalette>,
+    dark: Boolean,
+    selectedPalette: ThemePalette,
+    onPaletteChange: (ThemePalette) -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val listState = rememberLazyListState()
+    val canScrollForward by remember { derivedStateOf { listState.canScrollForward } }
+
+    LaunchedEffect(Unit) {
+        if (!paletteNudgePlayed) {
+            paletteNudgePlayed = true
+            delay(700)
+            listState.animateScrollBy(140f)
+            delay(150)
+            listState.animateScrollBy(-140f)
+        }
+    }
+
+    val arrowTransition = rememberInfiniteTransition(label = "swipeHint")
+    val arrowShift by arrowTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "swipeArrow"
+    )
+
+    Column(Modifier.padding(vertical = 14.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "More palettes",
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                color = colors.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            AnimatedVisibility(
+                visible = canScrollForward,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Swipe",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.primary
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .graphicsLayer { translationX = arrowShift.dp.toPx() }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Box {
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 40.dp)
+            ) {
+                items(palettes) { palette ->
+                    PaletteItem(
+                        palette = palette,
+                        dark = dark,
+                        isSelected = palette == selectedPalette,
+                        onClick = { onPaletteChange(palette) }
+                    )
+                }
+            }
+
+            // Soft fade over the cut-off item; disappears at the end of the list.
+            val fadeAlpha by animateFloatAsState(
+                if (canScrollForward) 1f else 0f,
+                MaterialTheme.motionScheme.defaultEffectsSpec(), label = "paletteFade"
+            )
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(44.dp)
+                    .height(PaletteItemHeight)
+                    .graphicsLayer { alpha = fadeAlpha }
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                colors.surfaceContainerLow.copy(alpha = 0f),
+                                colors.surfaceContainerLow
+                            )
+                        )
+                    )
+            )
+        }
+    }
+}
+
+private val PaletteItemHeight = 96.dp
 
 @Composable
 private fun PaletteItem(
@@ -311,46 +549,58 @@ private fun PaletteItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val colors = MaterialTheme.colorScheme
     val scheme = remember(palette, dark) { paletteColorScheme(palette, dark) }
-
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.06f else 1f,
-        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
-        label = "paletteScale"
-    )
     val interaction = remember { MutableInteractionSource() }
 
-    Box(
+    Column(
         modifier = Modifier
-            .size(72.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .width(72.dp)
+            .height(PaletteItemHeight)
+            .themePressScale(interaction, pressedScale = 0.95f)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.surfaceVariant
-                else MaterialTheme.colorScheme.surfaceContainerHigh
-            )
             .clickable(interactionSource = interaction, indication = ripple(), onClick = onClick)
             .semantics { contentDescription = "${palette.name} palette" },
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (palette.isDynamic) {
-            Icon(
-                Icons.Outlined.Palette,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp)
-            )
-            PaletteCheck(visible = isSelected)
-        } else {
-            Box(Modifier.size(44.dp).clip(CircleShape)) {
-                Canvas(Modifier.fillMaxSize()) {
-                    drawRect(scheme.primary, Offset(0f, 0f), Size(size.width, size.height / 2))
-                    drawRect(scheme.secondary, Offset(0f, size.height / 2), Size(size.width / 2, size.height / 2))
-                    drawRect(scheme.tertiary, Offset(size.width / 2, size.height / 2), Size(size.width / 2, size.height / 2))
-                }
-                PaletteCheck(visible = isSelected, modifier = Modifier.align(Alignment.Center))
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (isSelected) colors.secondaryContainer else colors.surfaceContainerHigh)
+                .border(2.dp, if (isSelected) colors.primary else Color.Transparent, RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            PaletteSwatch(scheme, size = 44.dp) {
+                PaletteCheck(visible = isSelected)
             }
         }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            palette.name,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isSelected) colors.onSurface else colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** Round three-colour swatch (primary on top, secondary + tertiary below). */
+@Composable
+private fun PaletteSwatch(
+    scheme: ColorScheme,
+    size: Dp,
+    overlay: @Composable BoxScope.() -> Unit = {}
+) {
+    Box(Modifier.size(size).clip(CircleShape), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(scheme.primary, Offset(0f, 0f), Size(this.size.width, this.size.height / 2))
+            drawRect(scheme.secondary, Offset(0f, this.size.height / 2), Size(this.size.width / 2, this.size.height / 2))
+            drawRect(scheme.tertiary, Offset(this.size.width / 2, this.size.height / 2), Size(this.size.width / 2, this.size.height / 2))
+        }
+        overlay()
     }
 }
 
@@ -367,7 +617,7 @@ private fun PaletteCheck(visible: Boolean, modifier: Modifier = Modifier) {
     ) {
         Box(
             modifier = Modifier
-                .size(24.dp)
+                .size(22.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center
@@ -396,66 +646,83 @@ private fun ThemePreviewCard(
     val useDark = themeMode.isDark(isSystemDark)
     val previewScheme = rememberAppColorScheme(palette, useDark, pureBlack, dynamicEnabled)
 
-    MaterialTheme(colorScheme = previewScheme) {
-        val cs = MaterialTheme.colorScheme
-        Card(
-            modifier = modifier,
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = cs.surface),
-            border = BorderStroke(1.dp, cs.outlineVariant),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(14.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(cs.surfaceContainerHigh)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Box(Modifier.size(28.dp).background(cs.primary, CircleShape))
-                }
+    // Animate the whole preview when palette / mode changes so the swap feels alive.
+    val bg by animateColorAsState(previewScheme.surface, tween(300), label = "previewBg")
+    val border by animateColorAsState(previewScheme.outlineVariant, tween(300), label = "previewBorder")
+    val chip by animateColorAsState(previewScheme.surfaceContainerHigh, tween(300), label = "previewChip")
+    val primary by animateColorAsState(previewScheme.primary, tween(300), label = "previewPrimary")
+    val onPrimary by animateColorAsState(previewScheme.onPrimary, tween(300), label = "previewOnPrimary")
+    val secondary by animateColorAsState(previewScheme.secondary, tween(300), label = "previewSecondary")
+    val tertiary by animateColorAsState(previewScheme.tertiary, tween(300), label = "previewTertiary")
+    val container by animateColorAsState(previewScheme.primaryContainer, tween(300), label = "previewContainer")
 
-                Row(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = bg),
+        border = BorderStroke(1.dp, border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Top bar: title pill + avatar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .width(84.dp)
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(chip)
+                )
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.size(24.dp).background(primary, CircleShape))
+            }
+
+            // Content tiles
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    Modifier
+                        .weight(2f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(primary)
+                        .padding(12.dp)
                 ) {
-                    Box(
-                        Modifier
-                            .weight(2f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(cs.primary)
-                    )
-                    Column(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            Modifier.fillMaxWidth().weight(1f)
-                                .clip(RoundedCornerShape(12.dp)).background(cs.secondary)
-                        )
-                        Box(
-                            Modifier.fillMaxWidth().weight(1f)
-                                .clip(RoundedCornerShape(12.dp)).background(cs.tertiary)
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.width(56.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(onPrimary.copy(alpha = 0.9f)))
+                        Box(Modifier.width(36.dp).height(8.dp).clip(RoundedCornerShape(4.dp)).background(onPrimary.copy(alpha = 0.5f)))
                     }
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(cs.primaryContainer)
-                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).background(secondary))
+                    Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).background(tertiary))
+                }
+            }
+
+            // Mini navigation bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(chip),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(26.dp).height(10.dp).clip(RoundedCornerShape(5.dp)).background(container))
+                repeat(2) {
+                    Box(Modifier.size(8.dp).background(border, CircleShape))
                 }
             }
         }
@@ -504,6 +771,19 @@ private fun rememberAppearanceGroupShape(pos: AppearanceGroupPos, pressed: Boole
         spec, label = "appearanceGroupBottomCorner"
     )
     return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
+}
+
+/** A plain grouped-list container (same shape / colour as [AppearanceListItem]) for custom content. */
+@Composable
+private fun AppearanceGroupSurface(
+    pos: AppearanceGroupPos,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        shape = rememberAppearanceGroupShape(pos, pressed = false),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth()
+    ) { Column(content = content) }
 }
 
 /**

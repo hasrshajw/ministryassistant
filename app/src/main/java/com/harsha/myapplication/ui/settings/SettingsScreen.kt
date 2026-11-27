@@ -5,7 +5,13 @@ package com.harsha.myapplication.ui.settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -42,7 +48,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -53,6 +64,7 @@ import com.harsha.myapplication.data.SecurityRepository
 import com.harsha.myapplication.data.DriveBackup
 import com.harsha.myapplication.scripture.BibleData
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.ui.theme.revealOnEnter
 import com.harsha.myapplication.ui.components.StudyBarIconButton
 import com.harsha.myapplication.ui.components.StudyTopBar
@@ -91,6 +103,8 @@ fun SettingsScreen(
     onClose: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
+    val feedback = rememberAppFeedback()
+    fun go(action: () -> Unit): () -> Unit = { feedback.click(); action() }
 
     val dataVersion = BibleData.version
     val bibles = remember(dataVersion) { BibleData.importedBibles }
@@ -128,198 +142,194 @@ fun SettingsScreen(
                 .padding(horizontal = ScreenMargin)
                 .padding(bottom = 32.dp)
         ) {
-            // ── Profile / Sign-in ──
+            // ── Profile: compact + quiet (neutral surface) ──
             ProfileSignInCard(
-                onClick = onOpenProfile,
+                onClick = go(onOpenProfile),
                 modifier = Modifier.revealOnEnter(index = 0, playOnceKey = "settings-profile"),
             )
 
-            Spacer(Modifier.height(SectionGap))
+            Spacer(Modifier.height(20.dp))
 
-            // ── Featured (premium upsell) ──
-            Column(Modifier.revealOnEnter(index = 1, playOnceKey = "settings-premium")) {
+            // ── Featured ──
+            Column(Modifier.revealOnEnter(index = 1, playOnceKey = "settings-genz")) {
                 SectionHeader("Featured")
                 Spacer(Modifier.height(8.dp))
-                PremiumUpgradeCard(
-                    onClick = onOpenGenZMode,
-                )
+                GenZCard(onClick = go(onOpenGenZMode))
             }
 
             Spacer(Modifier.height(SectionGap))
 
-            // ── Bibles (active translation + import, merged) ──
-            Column(Modifier.revealOnEnter(index = 1, playOnceKey = "settings-bibles")) {
-                SectionHeader("Bibles")
-                Spacer(Modifier.height(8.dp))
-
-                // Only the import entry lives here; installed Bibles are managed on the Import screen.
-                GroupedList(
-                    items = listOf(Unit),
-                    modifier = Modifier.animateContentSize()
-                ) { _, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = Tone.Tertiary,
-                        leadingIcon = Icons.Outlined.FileDownload,
+            // ── Data: import Bible first, then backup ──
+            SettingsSection(
+                title = "Data",
+                modifier = Modifier.revealOnEnter(index = 2, playOnceKey = "settings-data"),
+                items = listOf(
+                    RowItem(
+                        icon = Icons.Outlined.FileDownload,
                         title = "Import Bible",
                         subtitle = if (bibles.isEmpty()) {
                             "Add a Bible to get started"
                         } else {
                             "${bibles.size} translation${if (bibles.size == 1) "" else "s"} installed"
                         },
-                        onClick = onOpenBibles,
-                        showChevron = true
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(SectionGap))
-
-            // ── Data & backup ──
-            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "settings-data")) {
-                SectionHeader("Data")
-                Spacer(Modifier.height(8.dp))
-                GroupedList(items = listOf(Unit)) { _, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = Tone.Secondary,
-                        leadingIcon = Icons.Outlined.Backup,
-                        title = "Backup & restore",
-                        subtitle = backupSubtitle,
-                        onClick = onOpenBackup,
-                        showChevron = true
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(SectionGap))
-
-            // ── Security (PIN lock) ──
-            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "settings-security")) {
-                SectionHeader("Privacy")
-                Spacer(Modifier.height(8.dp))
-                GroupedList(items = listOf(Unit)) { _, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = Tone.Primary,
-                        leadingIcon = Icons.Outlined.Lock,
-                        title = "App lock",
-                        subtitle = if (SecurityRepository.isEnabled) "On · PIN required" else "Protect names, addresses and notes",
-                        onClick = onOpenSecurity,
-                        showChevron = true
-                    )
-                }
-            }
+                        onClick = go(onOpenBibles),
+                    ),
+                    RowItem(Icons.Outlined.Backup, "Backup & restore", backupSubtitle, go(onOpenBackup)),
+                ),
+            )
 
             Spacer(Modifier.height(SectionGap))
 
             // ── App ──
-            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "settings-app")) {
-                SectionHeader("App")
-                Spacer(Modifier.height(8.dp))
-                GroupedList(
-                    items = listOf(
-                        RowItem(Icons.Outlined.Palette, "Appearance", Tone.Secondary),
-                        RowItem(Icons.Outlined.Notifications, "Notifications", Tone.Tertiary),
-                        RowItem(Icons.Outlined.Tune, "Customize App", Tone.Tertiary),
-                    )
-                ) { item, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = item.tone,
-                        leadingIcon = item.icon,
-                        title = item.title,
-                        onClick = {
-                            when (item.title) {
-                                "Appearance" -> onOpenAppearance()
-                                "Notifications" -> onOpenNotifications()
-                                "Customize App" -> onOpenCustomizeApp()
-                            }
-                        },
-                        showChevron = true
-                    )
-                }
-            }
+            SettingsSection(
+                title = "App",
+                modifier = Modifier.revealOnEnter(index = 3, playOnceKey = "settings-app"),
+                items = listOf(
+                    RowItem(Icons.Outlined.Palette, "Appearance", onClick = go(onOpenAppearance)),
+                    RowItem(Icons.Outlined.Notifications, "Notifications", onClick = go(onOpenNotifications)),
+                    RowItem(Icons.Outlined.Tune, "Customize App", onClick = go(onOpenCustomizeApp)),
+                ),
+            )
+
+            Spacer(Modifier.height(SectionGap))
+
+            // ── Privacy (now below App) ──
+            SettingsSection(
+                title = "Privacy",
+                modifier = Modifier.revealOnEnter(index = 4, playOnceKey = "settings-security"),
+                items = listOf(
+                    RowItem(
+                        icon = Icons.Outlined.Lock,
+                        title = "App lock",
+                        subtitle = if (SecurityRepository.isEnabled) "On · PIN required" else "Protect names, addresses and notes",
+                        onClick = go(onOpenSecurity),
+                    ),
+                ),
+            )
 
             Spacer(Modifier.height(SectionGap))
 
             // ── Legal ──
-            Column(Modifier.revealOnEnter(index = 3, playOnceKey = "settings-legal")) {
-                SectionHeader("Legal documents")
-                Spacer(Modifier.height(8.dp))
-                GroupedList(
-                    items = listOf(
-                        RowItem(Icons.Outlined.Description, "Terms and Conditions", Tone.Neutral),
-                        RowItem(Icons.Outlined.Security, "Privacy Policy", Tone.Neutral),
-                    )
-                ) { item, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = item.tone,
-                        leadingIcon = item.icon,
-                        title = item.title,
-                        onClick = {
-                            when (item.title) {
-                                "Terms and Conditions" -> onOpenTerms()
-                                "Privacy Policy" -> onOpenPrivacy()
-                            }
-                        },
-                        showChevron = true
-                    )
-                }
-            }
+            SettingsSection(
+                title = "Legal documents",
+                modifier = Modifier.revealOnEnter(index = 5, playOnceKey = "settings-legal"),
+                items = listOf(
+                    RowItem(Icons.Outlined.Description, "Terms and Conditions", onClick = go(onOpenTerms)),
+                    RowItem(Icons.Outlined.Security, "Privacy Policy", onClick = go(onOpenPrivacy)),
+                ),
+            )
 
             Spacer(Modifier.height(SectionGap))
 
             // ── About ──
-            Column(Modifier.revealOnEnter(index = 4, playOnceKey = "settings-about")) {
-                SectionHeader("About")
-                Spacer(Modifier.height(8.dp))
-                GroupedList(items = listOf(Unit)) { _, pos ->
-                    SettingsListItem(
-                        pos = pos,
-                        tone = Tone.Primary,
-                        leadingIcon = Icons.Outlined.Info,
-                        title = "About",
-                        subtitle = "App version and info",
-                        onClick = onOpenAbout,
-                        showChevron = true
-                    )
-                }
-            }
+            SettingsSection(
+                title = "About",
+                modifier = Modifier.revealOnEnter(index = 6, playOnceKey = "settings-about"),
+                items = listOf(
+                    RowItem(Icons.Outlined.Info, "About", "App version and info", go(onOpenAbout), accent = true),
+                ),
+            )
         }
     }
 }
 
-/** Colour family of a row's cookie-shaped icon tile. All pairs come from the theme (light + dark safe). */
-private enum class Tone { Primary, Secondary, Tertiary, Neutral }
-
-private data class RowItem(val icon: ImageVector, val title: String, val tone: Tone)
+private data class RowItem(
+    val icon: ImageVector,
+    val title: String,
+    val subtitle: String? = null,
+    val onClick: () -> Unit,
+    /** Special tile: tertiary colour + slowly spinning sunny shape (used by About). */
+    val accent: Boolean = false,
+)
 
 /** Where a row sits in its group: decides which corners are large. */
 private data class GroupPos(val first: Boolean, val last: Boolean)
 
+// ───────────────────────────── Components ─────────────────────────────
+
 @Composable
-private fun Tone.tileColors(): Pair<Color, Color> {
-    val c = MaterialTheme.colorScheme
-    return when (this) {
-        Tone.Primary -> c.primary to c.onPrimary
-        Tone.Secondary -> c.secondaryContainer to c.onSecondaryContainer
-        Tone.Tertiary -> c.tertiaryContainer to c.onTertiaryContainer
-        Tone.Neutral -> c.surfaceContainerHighest to c.onSurfaceVariant
+private fun SettingsSection(
+    title: String,
+    items: List<RowItem>,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier) {
+        SectionHeader(title)
+        Spacer(Modifier.height(8.dp))
+        GroupedList(items = items) { item, pos ->
+            SettingsListItem(
+                pos = pos,
+                leadingIcon = item.icon,
+                title = item.title,
+                subtitle = item.subtitle,
+                onClick = item.onClick,
+                accent = item.accent,
+                showChevron = true,
+            )
+        }
     }
 }
 
-// ───────────────────────────── Components ─────────────────────────────
-
+/** Gen-Z icon (from icon_genz.svg): rounded pentagon with two "eye" cut-outs. Tinted by the caller. */
+private val GenZIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "GenZ",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = PathParser().parsePathString(
+            "M9.5255,2.0919C10.7171,0.3535 13.283,0.3535 14.4747,2.0919L16.5665,5.1446C16.6964,5.3341 16.8882,5.4731 17.1085,5.5382L20.6583,6.5851C22.68,7.1811 23.4728,9.6215 22.1876,11.2921L19.9317,14.2247C19.7916,14.4069 19.7184,14.6326 19.7247,14.8624L19.8263,18.5616C19.8838,20.6682 17.808,22.1764 15.8223,21.4708L12.335,20.2306C12.1184,20.1536 11.8817,20.1536 11.6651,20.2306L8.1778,21.4708C6.1921,22.1766 4.1163,20.6683 4.1739,18.5616L4.2755,14.8624C4.2817,14.6327 4.2085,14.4069 4.0684,14.2247L1.8126,11.2921C0.5274,9.6215 1.3201,7.1810 3.3419,6.5851L6.8917,5.5382C7.1121,5.4731 7.3037,5.3341 7.4337,5.1446L9.5255,2.0919ZM9,9.5V13.5H11V9.5H9ZM13,9.5V13.5H15V9.5H13Z"
+        ).toNodes(),
+        pathFillType = PathFillType.EvenOdd,
+        fill = SolidColor(Color.Black),
+    ).build()
+}
 
 /**
- * Premium upgrade card — Material 3 Expressive.
- * Same height language as Bible list rows (44dp cookie + compact padding).
- * No shadows — stands out via primaryContainer + gradient wash.
+ * Icon tile whose background shape slowly rotates while the icon stays upright
+ * (only the shape layer is transformed, in the draw phase: no recomposition).
  */
 @Composable
-private fun PremiumUpgradeCard(
+private fun SpinningShapeTile(
+    icon: ImageVector,
+    shape: Shape,
+    container: Color,
+    content: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    brush: Brush? = null,
+    iconSize: Dp = 24.dp,
+    spin: Boolean = true,
+    clockwise: Boolean = true,
+    periodMillis: Int = 24_000,
+) {
+    val transition = rememberInfiniteTransition(label = "tileSpin")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (clockwise) 360f else -360f,
+        animationSpec = infiniteRepeatable(tween(periodMillis, easing = LinearEasing), RepeatMode.Restart),
+        label = "tileAngle",
+    )
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer { if (spin) rotationZ = angle }
+                .then(if (brush != null) Modifier.background(brush, shape) else Modifier.background(container, shape))
+        )
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(iconSize))
+    }
+}
+
+/**
+ * Gen-Z Mode: row-sized, but premium: soft gradient wash, hairline gradient border, and a
+ * solid dark pentagon tile (static) holding the Gen-Z glyph.
+ * Everything is theme-derived (light, dark, any palette).
+ */
+@Composable
+private fun GenZCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -328,95 +338,99 @@ private fun PremiumUpgradeCard(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val corner by animateDpAsState(
-        targetValue = if (pressed) 20.dp else 28.dp,
+        targetValue = if (pressed) PressedCorner else GroupOuter,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "premiumCorner",
+        label = "genZCorner",
     )
-    val shape = RoundedCornerShape(corner)
 
-    val baseWash = Brush.linearGradient(
+    // Solid dark tile: deep primary in light theme, deep green container + emerald glyph in dark theme.
+    val isDark = colors.background.luminance() < 0.5f
+    val tileBg = if (isDark) colors.primaryContainer else colors.primary
+    val tileFg = if (isDark) colors.primary else colors.onPrimary
+    val border = BorderStroke(
+        1.dp,
+        Brush.linearGradient(
+            listOf(
+                colors.primary.copy(alpha = 0.55f),
+                colors.tertiary.copy(alpha = 0.55f),
+            )
+        )
+    )
+    val wash = Brush.linearGradient(
         colors = listOf(
-            colors.primary.copy(alpha = 0.18f),
-            colors.primaryContainer.copy(alpha = 0.70f),
-            colors.tertiaryContainer.copy(alpha = 0.32f),
+            colors.primaryContainer.copy(alpha = 0.65f),
+            colors.surfaceContainerLow,
+            colors.tertiaryContainer.copy(alpha = 0.55f),
         ),
         start = Offset.Zero,
-        end = Offset(480f, 200f),
+        end = Offset(900f, 260f),
     )
 
     Surface(
         onClick = onClick,
-        shape = shape,
-        color = colors.primaryContainer,
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
+        shape = RoundedCornerShape(corner),
+        color = colors.surfaceContainerLow,
+        border = border,
         interactionSource = interaction,
         modifier = modifier
             .fillMaxWidth()
-            .themePressScale(interaction, pressedScale = 0.97f),
+            .themePressScale(interaction, pressedScale = 0.98f),
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(baseWash)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                // Match Bible row cookie size (44dp)
-                Surface(
-                    shape = MaterialShapes.Cookie9Sided.toShape(),
-                    color = colors.primary,
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.WorkspacePremium,
-                            contentDescription = null,
-                            tint = colors.onPrimary,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                }
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
+        Box(Modifier.background(wash)) {
+            ListItem(
+                headlineContent = {
                     Text(
                         "Gen-Z Mode",
                         style = typography.bodyLargeEmphasized,
-                        color = colors.onPrimaryContainer,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                },
+                supportingContent = {
                     Text(
                         "Get your reminders with a little more fun",
-                        style = typography.bodyMedium,
-                        color = colors.onPrimaryContainer.copy(alpha = 0.80f),
+                        style = typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                }
-
-                Icon(
-                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = colors.onPrimaryContainer.copy(alpha = 0.70f),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+                },
+                leadingContent = {
+                    // Static pentagon tile (no rotation) holding the Gen-Z glyph
+                    SpinningShapeTile(
+                        icon = GenZIcon,
+                        shape = MaterialShapes.Pentagon.toShape(),
+                        container = tileBg,
+                        content = tileFg,
+                        size = 48.dp,
+                        iconSize = 28.dp,
+                        spin = false,
+                    )
+                },
+                trailingContent = {
+                    Surface(shape = CircleShape, color = colors.surfaceContainerLowest, modifier = Modifier.size(32.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                },
+                colors = ListItemDefaults.colors(
+                    containerColor = Color.Transparent,
+                    headlineColor = colors.onSurface,
+                    supportingColor = colors.onSurfaceVariant,
+                ),
+            )
         }
     }
 }
 
 /**
- * Hero card: shows real Google account state from [BackupRepository] / Drive.
- * Signed-in: name + email from Google; tap opens Profile.
- * Signed-out: Sign in opens Profile (where real Google Sign-In runs).
+ * Compact account row on a neutral surface so it never competes with the Gen-Z hero.
+ * Signed-in: avatar + name + email. Signed-out: short pitch + tonal Sign-in button.
  */
 @Composable
 private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -447,33 +461,41 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
         }
     }
 
-    Card(
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val corner by animateDpAsState(
+        targetValue = if (pressed) PressedCorner else GroupOuter,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+        label = "profileCorner",
+    )
+
+    Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(ProfileCorner),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.primaryContainer,
-            contentColor = colors.onPrimaryContainer,
-        ),
+        shape = RoundedCornerShape(corner),
+        color = colors.surfaceContainerLow,
+        interactionSource = interaction,
+        modifier = modifier
+            .fillMaxWidth()
+            .themePressScale(interaction, pressedScale = 0.98f),
     ) {
-        if (signedIn) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            if (signedIn) {
                 Surface(
                     shape = CircleShape,
-                    color = colors.primary,
-                    modifier = Modifier.size(56.dp),
+                    color = colors.secondaryContainer,
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             initials,
                             style = typography.titleMediumEmphasized,
-                            color = colors.onPrimary,
+                            color = colors.onSecondaryContainer,
                         )
                     }
                 }
@@ -481,11 +503,17 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(1.dp),
                 ) {
-                    Text(name, style = typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        name,
+                        style = typography.titleMediumEmphasized,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         email,
-                        style = typography.bodyMedium,
-                        color = colors.onPrimaryContainer.copy(alpha = 0.8f),
+                        style = typography.bodySmall,
+                        color = colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -493,50 +521,40 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                 Icon(
                     Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = colors.onPrimaryContainer.copy(alpha = 0.7f),
+                    tint = colors.onSurfaceVariant,
                     modifier = Modifier.size(22.dp),
                 )
-            }
-        } else {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+            } else {
+                Surface(
+                    shape = MaterialShapes.Cookie6Sided.toShape(),
+                    color = colors.secondaryContainer,
+                    modifier = Modifier.size(48.dp),
                 ) {
-                    Surface(
-                        shape = MaterialShapes.Cookie9Sided.toShape(),
-                        color = colors.primary,
-                        modifier = Modifier.size(56.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                Icons.Outlined.Person,
-                                contentDescription = null,
-                                tint = colors.onPrimary,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text("Welcome", style = typography.titleLargeEmphasized)
-                        Text(
-                            "Sign in with Google to back up privately to Drive",
-                            style = typography.bodyMedium,
-                            color = colors.onPrimaryContainer.copy(alpha = 0.8f),
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint = colors.onSecondaryContainer,
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }
-                Button(
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Text("Welcome", style = typography.titleMediumEmphasized, color = colors.onSurface)
+                    Text(
+                        "Back up privately to Google Drive",
+                        style = typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                FilledTonalButton(
                     onClick = onClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
                 ) {
                     Text("Sign in", style = typography.labelLargeEmphasized)
                 }
@@ -549,9 +567,9 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
 private fun SectionHeader(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.labelLargeEmphasized,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp)
+        style = MaterialTheme.typography.labelMediumEmphasized,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 8.dp)
     )
 }
 
@@ -593,12 +611,12 @@ private fun rememberGroupShape(pos: GroupPos, pressed: Boolean): Shape {
 @Composable
 private fun SettingsListItem(
     pos: GroupPos,
-    tone: Tone,
     leadingIcon: ImageVector,
     title: String,
     onClick: () -> Unit,
     subtitle: String? = null,
     selected: Boolean = false,
+    accent: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
     showChevron: Boolean = false
 ) {
@@ -608,7 +626,9 @@ private fun SettingsListItem(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val shape = rememberGroupShape(pos, pressed)
-    val (tileColor, tileContent) = tone.tileColors()
+    // One tile colour for every row: icons read as a family, colour is reserved for Gen-Z.
+    val tileColor = colors.secondaryContainer
+    val tileContent = colors.onSecondaryContainer
 
     val container by animateColorAsState(
         targetValue = if (selected) colors.secondaryContainer else colors.surfaceContainerLow,
@@ -640,25 +660,36 @@ private fun SettingsListItem(
                 {
                     Text(
                         it,
-                        style = typography.bodyMedium,
+                        style = typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             },
             leadingContent = {
-                Surface(
-                    shape = MaterialShapes.Cookie6Sided.toShape(),
-                    color = tileColor,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            leadingIcon,
-                            contentDescription = null,
-                            tint = tileContent,
-                            modifier = Modifier.size(24.dp)
-                        )
+                if (accent) {
+                    SpinningShapeTile(
+                        icon = leadingIcon,
+                        shape = MaterialShapes.Sunny.toShape(),
+                        container = colors.tertiaryContainer,
+                        content = colors.onTertiaryContainer,
+                        clockwise = false,
+                        periodMillis = 30_000,
+                    )
+                } else {
+                    Surface(
+                        shape = MaterialShapes.Cookie6Sided.toShape(),
+                        color = tileColor,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                leadingIcon,
+                                contentDescription = null,
+                                tint = tileContent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 }
             },

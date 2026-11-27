@@ -76,6 +76,7 @@ import com.harsha.myapplication.ui.theme.StudyEmerald
 import com.harsha.myapplication.ui.theme.StudyGreenTrack
 import com.harsha.myapplication.ui.theme.pressScale
 import com.harsha.myapplication.ui.theme.pressScaleClickable
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.ui.theme.revealOnEnter
 import com.harsha.myapplication.data.HomeCard
 import com.harsha.myapplication.data.HomeLayoutRepository
@@ -203,6 +204,7 @@ fun HomeScreen(
         pageCount = { cards.size },
     )
     val scope = rememberCoroutineScope()
+    val feedback = rememberAppFeedback()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -233,6 +235,7 @@ fun HomeScreen(
         derivedStateOf { fullSheetPx > 0 && pageScroll.value > fullSheetPx / 2 }
     }
     val toggleSheet: () -> Unit = {
+        feedback.tick()
         scope.launch {
             pageScroll.animateScrollTo(
                 value = if (sheetRaised) 0 else fullSheetPx,
@@ -342,7 +345,7 @@ fun HomeScreen(
                                         }
                                         HomeCard.Ministry -> Column(Modifier.fillMaxWidth()) {
                                             SectionTitle("Monthly progress")
-                                            MonthlyProgressPanel(height = DailyCardHeight, onClick = onMonthlyProgressClick)
+                                            MonthlyProgressPanel(height = DailyCardHeight, onClick = { feedback.click(); onMonthlyProgressClick() })
                                         }
                                         HomeCard.DailyText -> Column(Modifier.fillMaxWidth()) {
                                             SectionTitle("Daily text")
@@ -367,6 +370,7 @@ fun HomeScreen(
                                     .align(Alignment.CenterHorizontally)
                                     .revealOnEnter(index = 2, playOnceKey = "home-dots"),
                                 onDotClick = {
+                                    feedback.select()
                                     scope.launch {
                                         sectionPager.animateScrollToPage(it, animationSpec = Motion.spatialDefault)
                                     }
@@ -376,9 +380,16 @@ fun HomeScreen(
 
                             Box(Modifier.revealOnEnter(index = 3, playOnceKey = "home-actions")) {
                                 ActionButtons(
-                                    onAddNotesClick = onAddNotesClick,
-                                    onAddHoursClick = { showAddHoursSheet = true },
+                                    onAddNotesClick = {
+                                        feedback.click()
+                                        onAddNotesClick()
+                                    },
+                                    onAddHoursClick = {
+                                        feedback.click()
+                                        showAddHoursSheet = true
+                                    },
                                     onAddPersonClick = {
+                                        feedback.click()
                                         showAddPerson = true
                                         onAddPersonClick()
                                     },
@@ -433,7 +444,7 @@ fun HomeScreen(
                                     DueCards(
                                         people = dueToday,
                                         emptyText = "Nothing due today",
-                                        onPersonClick = { id: String -> selectedPersonId = id },
+                                        onPersonClick = { id: String -> feedback.click(); selectedPersonId = id },
                                     )
                                 }
 
@@ -445,7 +456,7 @@ fun HomeScreen(
                                     DueCards(
                                         people = upcoming,
                                         emptyText = "Nothing in the next 2 days",
-                                        onPersonClick = { id: String -> selectedPersonId = id },
+                                        onPersonClick = { id: String -> feedback.click(); selectedPersonId = id },
                                     )
                                 }
 
@@ -959,7 +970,7 @@ private fun DailyTextRow(
     onIndexChange: (Int) -> Unit,
     onDailyTextClick: (Int) -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val feedback = rememberAppFeedback()
 
     BoxWithConstraints(
         Modifier
@@ -981,9 +992,10 @@ private fun DailyTextRow(
                     onClick = {
                         val rel = i - index
                         if (rel == 0) {
+                            feedback.click()
                             onDailyTextClick(i)
                         } else {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            feedback.select()
                             onIndexChange(i)
                         }
                     },

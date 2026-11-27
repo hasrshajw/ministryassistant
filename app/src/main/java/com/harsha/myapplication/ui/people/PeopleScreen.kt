@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.harsha.myapplication.ui.theme.pressScale
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.data.DAY_MS
 import com.harsha.myapplication.data.PeopleRepository
 import com.harsha.myapplication.data.PersonRecord
@@ -118,6 +119,7 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val haptics = LocalHapticFeedback.current
+    val feedback = rememberAppFeedback()
     val listState = rememberLazyListState()
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -159,7 +161,7 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
                 val fabSrc = remember { MutableInteractionSource() }
                 ExtendedFloatingActionButton(
                     onClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        feedback.click()
                         focusManager.clearFocus()
                         showAddForm = true
                     },
@@ -194,7 +196,10 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
                     SortMenuButton(
                         options = PersonSort.entries,
                         selected = sort,
-                        onSelect = { sort = it },
+                        onSelect = {
+                            feedback.select()
+                            sort = it
+                        },
                         label = { it.label },
                         icon = { it.icon },
                     )
@@ -214,7 +219,10 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
                             label = f.label,
                             count = counts.getValue(f),
                             selected = filter == f,
-                            onClick = { filter = f },
+                            onClick = {
+                                feedback.select()
+                                filter = f
+                            },
                         )
                     }
                 }
@@ -245,6 +253,7 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
                                 record = record,
                                 modifier = Modifier.animateItem(),
                             ) {
+                                feedback.click()
                                 focusManager.clearFocus()
                                 selectedId = record.id
                                 onPersonClick(record.id)

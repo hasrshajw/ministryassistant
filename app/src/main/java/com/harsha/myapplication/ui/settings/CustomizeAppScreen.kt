@@ -2,14 +2,25 @@
 
 package com.harsha.myapplication.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -17,8 +28,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.harsha.myapplication.data.AppIconOption
+import com.harsha.myapplication.data.AppIconOptions
+import com.harsha.myapplication.data.AppIconRepository
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Check
@@ -26,11 +45,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.harsha.myapplication.data.FeedbackRepository
 import com.harsha.myapplication.data.HomeCard
 import com.harsha.myapplication.data.HomeLayout
 import com.harsha.myapplication.data.HomeLayoutRepository
@@ -59,6 +81,7 @@ import com.harsha.myapplication.ui.theme.Motion
 import com.harsha.myapplication.ui.theme.StudyDeepGreen
 import com.harsha.myapplication.ui.theme.StudyEmerald
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.ui.theme.revealOnEnter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -74,16 +97,6 @@ private val CsPressedCorner = 20.dp
 
 /** Every reorderable row has this exact height, so slots can be computed without measuring. */
 private val CsRowHeight = 76.dp
-
-// ───────────────────────────── App icon options ─────────────────────────────
-
-private data class IconOption(val name: String, val background: Color, val accent: Color)
-
-// Only one icon for now. To add more later, add entries here: the picker below lays them out
-// in a row and remembers the selected index.
-private val CsIconOptions = listOf(
-    IconOption("Default", StudyDeepGreen, StudyEmerald),
-)
 
 // ───────────────────────────── Home cards ─────────────────────────────
 
@@ -101,11 +114,15 @@ private fun HomeCard.meta(): HomeCardMeta = when (this) {
 fun CustomizeAppScreen(onBack: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+    val feedback = rememberAppFeedback()
+    val context = LocalContext.current
 
-    var selectedIconIndex by rememberSaveable { mutableIntStateOf(0) }
-    var soundEffectsEnabled by rememberSaveable { mutableStateOf(true) }
-    var hapticLevel by rememberSaveable { mutableIntStateOf(2) } // 0 Off, 1 Subtle, 2 Expressive
+    // Live prefs from the repository (Compose state → recomposes on change).
+    val prefs = FeedbackRepository.prefs
+    val soundEffectsEnabled = prefs.soundEffectsEnabled
+    val hapticLevel = prefs.hapticLevel
 
+    val currentAlias = AppIconRepository.currentAlias
     val layout = HomeLayoutRepository.layout
 
     Scaffold(
@@ -114,7 +131,10 @@ fun CustomizeAppScreen(onBack: () -> Unit) {
                 title = "Customize App",
                 navigationIcon = {
                     StudyBarIconButton(
-                        onClick = onBack,
+                        onClick = {
+                            feedback.click()
+                            onBack()
+                        },
                         icon = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                     )
@@ -135,11 +155,15 @@ fun CustomizeAppScreen(onBack: () -> Unit) {
             // ── App icon ──
             Column(Modifier.revealOnEnter(index = 0, playOnceKey = "custom-icon")) {
                 CsSectionHeader("App icon")
+                CsSectionCaption("Choose how Study looks on your launcher")
                 Spacer(Modifier.height(8.dp))
                 AppIconCard(
-                    options = CsIconOptions,
-                    selectedIndex = selectedIconIndex,
-                    onSelect = { selectedIconIndex = it }
+                    options = AppIconOptions,
+                    selectedAlias = currentAlias,
+                    onSelectOption = { option ->
+                        feedback.select()
+                        AppIconRepository.setIcon(context, option)
+                    }
                 )
             }
 
@@ -148,17 +172,13 @@ fun CustomizeAppScreen(onBack: () -> Unit) {
             // ── Home screen cards ──
             Column(Modifier.revealOnEnter(index = 1, playOnceKey = "custom-home")) {
                 CsSectionHeader("Home screen")
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Drag the handle to reorder. Home follows this order. At least one card stays on.",
-                    style = typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, end = 4.dp)
-                )
-                Spacer(Modifier.height(10.dp))
-                HomeCardsReorderList(layout)
+                CsSectionCaption("Drag the handle to reorder. Home follows this order. At least one card stays on.")
                 Spacer(Modifier.height(8.dp))
-                StartCardPicker(layout)
+                // Reorder rows + "Open on" form ONE connected group (2dp gaps, outer corners only at the ends).
+                Column(verticalArrangement = Arrangement.spacedBy(CsGroupGap)) {
+                    HomeCardsReorderList(layout)
+                    StartCardPicker(layout)
+                }
             }
 
             Spacer(Modifier.height(CsSectionGap))
@@ -166,6 +186,7 @@ fun CustomizeAppScreen(onBack: () -> Unit) {
             // ── Sound & feedback ──
             Column(Modifier.revealOnEnter(index = 2, playOnceKey = "custom-sound")) {
                 CsSectionHeader("Sound & feedback")
+                CsSectionCaption("Sounds and vibration when you tap")
                 Spacer(Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(CsGroupGap)) {
                     CsSwitchRow(
@@ -174,10 +195,91 @@ fun CustomizeAppScreen(onBack: () -> Unit) {
                         title = "UI sound effects",
                         subtitle = "Subtle sounds on taps and button presses",
                         checked = soundEffectsEnabled,
-                        onCheckedChange = { soundEffectsEnabled = it }
+                        onCheckedChange = {
+                            FeedbackRepository.setSoundEffectsEnabled(it)
+                            // Preview the new setting immediately.
+                            if (it) feedback.click()
+                        }
                     )
-                    HapticCard(level = hapticLevel, onSelect = { hapticLevel = it })
+                    HapticCard(
+                        level = hapticLevel,
+                        onSelect = { level ->
+                            FeedbackRepository.setHapticLevel(level)
+                            // Preview the chosen level.
+                            when (level) {
+                                1 -> feedback.tick()
+                                2 -> feedback.confirm()
+                                else -> Unit
+                            }
+                        }
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CsSectionCaption(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp)
+    )
+}
+
+/** "Swipe →" cue for horizontally scrolling rows. Hides itself when there is nothing more to reveal. */
+@Composable
+private fun CsSwipeHint(visible: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val transition = rememberInfiniteTransition(label = "swipeHint")
+    val shift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 5f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "swipeArrow"
+    )
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Swipe", style = MaterialTheme.typography.labelMedium, color = colors.primary)
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = colors.primary,
+                modifier = Modifier
+                    .size(16.dp)
+                    .graphicsLayer { translationX = shift.dp.toPx() }
+            )
+        }
+    }
+}
+
+/** Connected Material 3 toggle-button group (same control as Theme mode in Appearance). */
+@Composable
+private fun CsChoiceGroup(
+    labels: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
+    ) {
+        labels.forEachIndexed { index, label ->
+            ToggleButton(
+                checked = index == selectedIndex,
+                onCheckedChange = { onSelect(index) },
+                modifier = Modifier.weight(1f),
+                shapes = when (index) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    labels.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                }
+            ) {
+                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -197,12 +299,15 @@ private fun CsSectionHeader(text: String) {
 
 @Composable
 private fun AppIconCard(
-    options: List<IconOption>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
+    options: List<AppIconOption>,
+    selectedAlias: String,
+    onSelectOption: (AppIconOption) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+    val scroll = rememberScrollState()
+    val canScrollForward by remember { derivedStateOf { scroll.canScrollForward } }
+    val selectedName = options.firstOrNull { it.aliasName == selectedAlias }?.name
 
     Surface(
         shape = RoundedCornerShape(CsGroupOuter),
@@ -212,29 +317,73 @@ private fun AppIconCard(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                options.forEachIndexed { index, option ->
-                    AppIconItem(
-                        option = option,
-                        selected = index == selectedIndex,
-                        onClick = { onSelect(index) }
-                    )
+            // Header: current choice on the left, scroll cue on the right
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Launcher icon", style = typography.bodyLargeEmphasized, color = colors.onSurface)
+                    if (selectedName != null) {
+                        Text("Using $selectedName", style = typography.bodyMedium, color = colors.onSurfaceVariant)
+                    }
                 }
+                CsSwipeHint(visible = canScrollForward)
             }
+
+            Box {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(scroll)
+                        .padding(start = 16.dp, end = 40.dp),   // end padding keeps the last icon peeking
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    options.forEach { option ->
+                        AppIconItem(
+                            option = option,
+                            selected = option.aliasName == selectedAlias,
+                            onClick = { onSelectOption(option) }
+                        )
+                    }
+                }
+                val fadeAlpha by animateFloatAsState(
+                    if (canScrollForward) 1f else 0f, Motion.effectsDefault, label = "iconFade"
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .width(44.dp)
+                        .fillMaxHeight()
+                        .graphicsLayer { alpha = fadeAlpha }
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    colors.surfaceContainerLow.copy(alpha = 0f),
+                                    colors.surfaceContainerLow
+                                )
+                            )
+                        )
+                )
+            }
+
             Text(
-                "More icon styles are coming soon.",
+                "Tap any icon to update your launcher icon instantly.",
                 style = typography.bodySmall,
-                color = colors.onSurfaceVariant
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
     }
 }
 
 @Composable
-private fun AppIconItem(option: IconOption, selected: Boolean, onClick: () -> Unit) {
+private fun AppIconItem(option: AppIconOption, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
     val ring by animateColorAsState(
@@ -266,13 +415,13 @@ private fun AppIconItem(option: IconOption, selected: Boolean, onClick: () -> Un
                 Box(
                     Modifier
                         .size(68.dp)
-                        .background(option.background, RoundedCornerShape(22.dp)),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(22.dp))
                 ) {
-                    Box(
-                        Modifier
-                            .size(28.dp)
-                            .background(option.accent, CircleShape)
+                    Image(
+                        painter = painterResource(option.drawableRes),
+                        contentDescription = option.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
@@ -314,6 +463,7 @@ private fun AppIconItem(option: IconOption, selected: Boolean, onClick: () -> Un
 private fun HomeCardsReorderList(layout: HomeLayout) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
+    val feedback = rememberAppFeedback()
     val scope = rememberCoroutineScope()
 
     val stepPx = with(density) { (CsRowHeight + CsGroupGap).toPx() }
@@ -359,25 +509,28 @@ private fun HomeCardsReorderList(layout: HomeLayout) {
                 HomeCardRow(
                     meta = card.meta(),
                     first = displayIndex == 0,
-                    last = displayIndex == lastIndex,
+                    last = false,   // the "Open on" card follows, so the group continues
                     lifted = isDragged,
                     checked = visible,
                     switchEnabled = !(visible && onlyOneVisible),
-                    onCheckedChange = { HomeLayoutRepository.setVisible(card, it) },
+                    onCheckedChange = {
+                        feedback.select()
+                        HomeLayoutRepository.setVisible(card, it)
+                    },
                     onDragStart = {
                         settleJob?.cancel()
                         settleJob = null
                         dragY = 0f
                         draggedCard = card
                         lastTarget = indexState
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        feedback.heavy()
                     },
                     onDrag = { dy ->
                         dragY += dy
                         val t = (indexState + (dragY / stepPx).roundToInt()).coerceIn(0, lastIndex)
                         if (t != lastTarget) {
                             lastTarget = t
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            feedback.tick()
                         }
                     },
                     onDragEnd = {
@@ -385,7 +538,10 @@ private fun HomeCardsReorderList(layout: HomeLayout) {
                         val to = (from + (dragY / stepPx).roundToInt()).coerceIn(0, lastIndex)
                         // Keep the row exactly where it is on screen, then ease it into its slot.
                         val residual = dragY - (to - from) * stepPx
-                        if (to != from) HomeLayoutRepository.move(from, to)
+                        if (to != from) {
+                            HomeLayoutRepository.move(from, to)
+                            feedback.confirm()
+                        }
                         dragY = residual
                         settleJob?.cancel()
                         settleJob = scope.launch {
@@ -395,7 +551,10 @@ private fun HomeCardsReorderList(layout: HomeLayout) {
                     },
                     onMoveBy = { delta ->
                         val to = (indexState + delta).coerceIn(0, lastIndex)
-                        if (to != indexState) HomeLayoutRepository.move(indexState, to)
+                        if (to != indexState) {
+                            HomeLayoutRepository.move(indexState, to)
+                            feedback.tick()
+                        }
                     },
                     modifier = Modifier
                         .zIndex(if (isDragged) 1f else 0f)
@@ -572,10 +731,15 @@ private fun HomeCardRow(
 private fun StartCardPicker(layout: HomeLayout) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+    val feedback = rememberAppFeedback()
     val target = layout.visibleCards.getOrNull(layout.startIndex())
+    val options = HomeStart.values()
 
     Surface(
-        shape = RoundedCornerShape(CsGroupOuter),
+        shape = RoundedCornerShape(
+            topStart = CsGroupInner, topEnd = CsGroupInner,
+            bottomStart = CsGroupOuter, bottomEnd = CsGroupOuter
+        ),
         color = colors.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -594,16 +758,14 @@ private fun StartCardPicker(layout: HomeLayout) {
                     color = colors.onSurfaceVariant
                 )
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeStart.values().forEach { option ->
-                    CsChoiceChip(
-                        label = option.label,
-                        selected = option == layout.start,
-                        onClick = { HomeLayoutRepository.setStart(option) },
-                        modifier = Modifier.weight(1f)
-                    )
+            CsChoiceGroup(
+                labels = options.map { it.label },
+                selectedIndex = options.indexOf(layout.start),
+                onSelect = { index ->
+                    feedback.select()
+                    HomeLayoutRepository.setStart(options[index])
                 }
-            }
+            )
         }
     }
 }
@@ -691,6 +853,14 @@ private fun CsSwitchRow(
 private fun HapticCard(level: Int, onSelect: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+    val well by animateColorAsState(
+        if (level > 0) colors.primaryContainer else colors.surfaceContainerHighest,
+        Motion.effectsDefault(), label = "hapticWell"
+    )
+    val tint by animateColorAsState(
+        if (level > 0) colors.onPrimaryContainer else colors.onSurfaceVariant,
+        Motion.effectsDefault(), label = "hapticTint"
+    )
     Surface(
         shape = RoundedCornerShape(
             topStart = CsGroupInner, topEnd = CsGroupInner,
@@ -703,69 +873,32 @@ private fun HapticCard(level: Int, onSelect: (Int) -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Haptic feedback", style = typography.bodyLargeEmphasized, color = colors.onSurface)
-                Text(
-                    "How strongly the app vibrates when you interact",
-                    style = typography.bodyMedium,
-                    color = colors.onSurfaceVariant
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Off", "Subtle", "Expressive").forEachIndexed { index, label ->
-                    CsChoiceChip(
-                        label = label,
-                        selected = index == level,
-                        onClick = { onSelect(index) },
-                        modifier = Modifier.weight(1f)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = MaterialShapes.Cookie6Sided.toShape(),
+                    color = well,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Vibration, null, tint = tint, modifier = Modifier.size(24.dp))
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Haptic feedback", style = typography.bodyLargeEmphasized, color = colors.onSurface)
+                    Text(
+                        "How strongly the app vibrates when you interact",
+                        style = typography.bodyMedium,
+                        color = colors.onSurfaceVariant
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CsChoiceChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    val radius by animateDpAsState(
-        if (selected) 22.dp else 14.dp, Motion.spatialDefaultDp, label = "chipRadius"
-    )
-    val container by animateColorAsState(
-        if (selected) colors.secondaryContainer else colors.surfaceContainerHighest,
-        Motion.effectsDefault(), label = "chipContainer"
-    )
-    val content by animateColorAsState(
-        if (selected) colors.onSecondaryContainer else colors.onSurface,
-        Motion.effectsDefault(), label = "chipContent"
-    )
-    val src = remember { MutableInteractionSource() }
-    Surface(
-        onClick = onClick,
-        interactionSource = src,
-        shape = RoundedCornerShape(radius),
-        color = container,
-        contentColor = content,
-        modifier = modifier
-            .height(44.dp)
-            .themePressScale(src, pressedScale = 0.94f)
-            .semantics {
-                role = Role.RadioButton
-                this.selected = selected
-            }
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLargeEmphasized,
-                maxLines = 1
+            CsChoiceGroup(
+                labels = listOf("Off", "Subtle", "Expressive"),
+                selectedIndex = level,
+                onSelect = onSelect
             )
         }
     }

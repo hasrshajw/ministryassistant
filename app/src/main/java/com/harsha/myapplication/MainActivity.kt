@@ -5,6 +5,7 @@ import android.os.Bundle
 import com.harsha.myapplication.ui.security.SecuritySettingsScreen
 import com.harsha.myapplication.ui.security.LockScreen
 import com.harsha.myapplication.data.SecurityRepository
+import com.harsha.myapplication.data.AppIconRepository
 import androidx.compose.animation.scaleOut
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.BackEventCompat
@@ -96,6 +97,7 @@ import com.harsha.myapplication.ui.settings.BackupScreen
 import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
 import com.harsha.myapplication.data.HomeLayoutRepository
+import com.harsha.myapplication.data.FeedbackRepository
 import com.harsha.myapplication.data.SetupRepository
 import com.harsha.myapplication.ui.setup.SetupWizardScreen
 import com.harsha.myapplication.ui.legal.TermsScreen
@@ -104,8 +106,9 @@ import com.harsha.myapplication.ui.components.ProvideAnimatedVisibilityScope
 import com.harsha.myapplication.ui.components.predictiveBackPeek
 import com.harsha.myapplication.ui.home.sampleDaily
 import com.harsha.myapplication.ui.theme.AppearanceRepository
-import com.harsha.myapplication.ui.theme.MotionTransitions
 import com.harsha.myapplication.ui.theme.Motion
+import com.harsha.myapplication.ui.theme.MotionTransitions
+import com.harsha.myapplication.ui.theme.rememberAppFeedback
 import com.harsha.myapplication.ui.theme.MyApplicationTheme
 import com.harsha.myapplication.ui.theme.StudyBackground
 import com.harsha.myapplication.ui.theme.StudyDeepGreen
@@ -158,6 +161,8 @@ class MainActivity : FragmentActivity() {
         NotesRepository.init(applicationContext)
         // Load the saved theme BEFORE the first frame so there is no flash of the wrong theme.
         AppearanceRepository.init(applicationContext)
+        FeedbackRepository.init(applicationContext)
+        AppIconRepository.init(applicationContext)
         SetupRepository.init(applicationContext)
         HoursRepository.init(applicationContext)
         NotificationPrefsRepository.init(applicationContext)
@@ -428,9 +433,10 @@ fun MainAppScaffold() {
     BackHandler(enabled = subScreen == null && selectedScreen != 0) { selectedScreen = 0 }
 
     val haptics = LocalHapticFeedback.current
+    val feedback = rememberAppFeedback()
     fun selectTab(i: Int) {
         if (selectedScreen != i) {
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            feedback.select()
             selectedScreen = i
         }
     }
