@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -235,6 +236,19 @@ fun LockScreen(modifier: Modifier = Modifier) {
 
     fun fail(msg: String) { errorText = msg; errorKey++ }
 
+    // Fingerprint first: the system prompt opens as soon as the lock screen appears. Cancelling it
+    // leaves this PIN screen as the fallback. A match unlocks exactly like a correct PIN.
+    val activity = remember(context) { BiometricUnlock.findActivity(context) }
+    val canUseBiometric = remember(context) { BiometricUnlock.isAvailable(context) }
+    fun promptBiometric() {
+        if (activity == null || mode != LockMode.Pin || unlocking) return
+        BiometricUnlock.prompt(activity) {
+            unlocking = true
+            scope.launch { delay(260); SecurityRepository.unlock() }
+        }
+    }
+    LaunchedEffect(Unit) { if (canUseBiometric) { delay(350); promptBiometric() } }
+
     fun handle(entered: String) {
         when (val r = SecurityRepository.check(context, kind, entered)) {
             PinCheck.Ok -> {
@@ -281,6 +295,13 @@ fun LockScreen(modifier: Modifier = Modifier) {
                         autoSubmitAtMax = true,
                         badgeOpen = unlocking,
                         footer = {
+                            if (!recovery && canUseBiometric) {
+                                TextButton(onClick = { promptBiometric() }) {
+                                    Icon(Icons.Filled.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.size(8.dp))
+                                    Text("Use fingerprint")
+                                }
+                            }
                             TextButton(onClick = { errorText = null; mode = if (recovery) LockMode.Pin else LockMode.Recovery }) {
                                 Text(if (recovery) "Back to PIN" else "Forgot PIN?")
                             }

@@ -8,7 +8,7 @@ import com.harsha.myapplication.data.SecurityRepository
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.scaleOut
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
@@ -149,7 +149,7 @@ data class DailyItem(
 
 data class Recommended(val title: String, val imageUrl: String? = null)
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Returns immediately: saved Bibles are read on a background thread.

@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.biometric:biometric:1.1.0") // system fingerprint prompt for the app lock
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
