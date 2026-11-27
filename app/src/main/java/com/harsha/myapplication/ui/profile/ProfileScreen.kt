@@ -548,7 +548,7 @@ private fun ProfileListItem(
         interactionSource = interaction,
         modifier = Modifier
             .fillMaxWidth()
-            .themePressScale(pressed)
+            .themePressScale(interaction)
     ) {
         Row(
             Modifier
