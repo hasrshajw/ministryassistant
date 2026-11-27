@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -177,6 +179,12 @@ internal fun SelectionToolbar(
     val marginPx = with(density) { 8.dp.roundToPx() }
     val gapPx = with(density) { 12.dp.roundToPx() }
     val handlePx = with(density) { 28.dp.roundToPx() } // selection handles hang below the text
+    // The toolbar must never be wider than the window (minus the popup margin), otherwise the
+    // colour row (back + "no highlight" + 6 colours) is clipped on 360dp phones. Swatch size is
+    // derived from the room we have: 8 items inside the toolbar's own padding/spacing budget.
+    val windowWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val maxToolbarWidth = windowWidthDp - 16.dp
+    val swatch: Dp = ((maxToolbarWidth - 32.dp) / 8).coerceIn(34.dp, 44.dp)
 
     val position = remember(rect, topInsetPx, marginPx, gapPx, handlePx) {
         object : PopupPositionProvider {
@@ -207,6 +215,7 @@ internal fun SelectionToolbar(
         properties = PopupProperties(focusable = false, clippingEnabled = false)
     ) {
         HorizontalFloatingToolbar(
+            modifier = Modifier.widthIn(max = maxToolbarWidth),
             expanded = true,
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(),
             contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
@@ -233,10 +242,10 @@ internal fun SelectionToolbar(
 
                         // All highlight colours; everything else is hidden so the swatches get the room.
                         mode == ToolbarMode.Colors && editing -> {
-                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state.mode = ToolbarMode.Main }
+                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", size = swatch) { state.mode = ToolbarMode.Main }
                             Box(
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(swatch)
                                     .clip(CircleShape)
                                     .selectable(
                                         selected = highlightArg == null,
@@ -248,7 +257,7 @@ internal fun SelectionToolbar(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(swatch - 12.dp)
                                         .clip(CircleShape)
                                         .border(1.dp, colors.outline.copy(alpha = 0.6f), CircleShape),
                                     contentAlignment = Alignment.Center
@@ -265,7 +274,7 @@ internal fun SelectionToolbar(
                                 val selected = highlightArg != null && highlightColorOf(highlightArg) == c
                                 Box(
                                     modifier = Modifier
-                                        .size(44.dp)
+                                        .size(swatch)
                                         .clip(CircleShape)
                                         .selectable(
                                             selected = selected,
@@ -277,7 +286,7 @@ internal fun SelectionToolbar(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(32.dp)
+                                            .size(swatch - 12.dp)
                                             .clip(CircleShape)
                                             .background(c)
                                             .border(1.dp, colors.outline.copy(alpha = 0.4f), CircleShape),
@@ -353,13 +362,14 @@ internal fun ToolbarButton(
     label: String,
     /** null = plain action (copy, paste ...); true / false = a toggle (bold, italic ...). */
     selected: Boolean? = null,
+    size: Dp = 44.dp,
     onClick: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     if (selected == null) {
         IconButton(
             onClick = onClick,
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(size),
             colors = IconButtonDefaults.iconButtonColors(contentColor = colors.onSurface),
             shapes = IconButtonDefaults.shapes()
         ) { Icon(icon, contentDescription = label) }
@@ -367,7 +377,7 @@ internal fun ToolbarButton(
         IconToggleButton(
             checked = selected,
             onCheckedChange = { onClick() },
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(size),
             colors = IconButtonDefaults.iconToggleButtonColors(
                 contentColor = colors.onSurface,
                 checkedContainerColor = colors.secondaryContainer,
