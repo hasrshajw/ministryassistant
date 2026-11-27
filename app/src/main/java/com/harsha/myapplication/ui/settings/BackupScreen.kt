@@ -509,7 +509,7 @@ private fun BackupHero(
                         // Leading = run backup. Trailing expands Export (and related actions).
                         var splitMenuOpen by remember { mutableStateOf(false) }
                         val size = SplitButtonDefaults.MediumContainerHeight
-                        Box(Modifier = Modifier.fillMaxWidth()) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             SplitButtonLayout(
                                 modifier = Modifier.fillMaxWidth(),
                                 leadingButton = {
