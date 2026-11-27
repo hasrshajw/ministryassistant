@@ -2,6 +2,12 @@ package com.harsha.myapplication
 
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.os.Bundle
+import com.harsha.myapplication.ui.security.SecuritySettingsScreen
+import com.harsha.myapplication.ui.security.LockScreen
+import com.harsha.myapplication.data.SecurityRepository
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.animation.scaleOut
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
@@ -156,6 +162,7 @@ class MainActivity : ComponentActivity() {
         NotificationPrefsRepository.init(applicationContext)
         HomeLayoutRepository.init(applicationContext)
         AppNotifications.ensureChannel(applicationContext)
+        SecurityRepository.init(applicationContext)
         BackupRepository.init(applicationContext)
         BackupRepository.runAutoBackupIfDue(applicationContext)
         enableEdgeToEdge()
@@ -189,6 +196,20 @@ class MainActivity : ComponentActivity() {
                 // Wizard -> app: a short cross-fade (240ms, with a tiny 96% -> 100% settle).
                 // It used to be a slow spring (stiffness 300 + 500ms hold), which felt laggy while
                 // Home was composing its first frame. Tweens are cheap and always finish on time.
+                // ---- App lock gate ----
+                // Locked: the app stays composed underneath (so navigation is kept) but is hidden from
+                // TalkBack and covered by an opaque overlay that swallows every touch.
+                val locked = SecurityRepository.isLocked
+                // FLAG_SECURE whenever the lock is on: blank recents thumbnail and no screenshots.
+                LaunchedEffect(SecurityRepository.isEnabled) {
+                    if (SecurityRepository.isEnabled) {
+                        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                }
+                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().then(if (locked) Modifier.clearAndSetSemantics {} else Modifier)) {
                 AnimatedContent(
                     targetState = SetupRepository.isSetupCompleted,
                     transitionSpec = {
@@ -217,8 +238,30 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                }
+                AnimatedVisibility(
+                    visible = locked,
+                    enter = fadeIn(Motion.effectsDefault()),
+                    exit = fadeOut(Motion.effectsDefault()) + scaleOut(Motion.spatialSlow(), targetScale = 1.06f),
+                ) {
+                    // Registered after the scaffold's own handlers, so it wins: Back on the lock screen sends
+                    // the app to the background instead of closing screens hidden underneath.
+                    BackHandler { moveTaskToBack(true) }
+                    LockScreen(Modifier.pointerInput(Unit) {}) // opaque + consumes taps
+                }
+                }
             }
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        SecurityRepository.onBackgrounded()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SecurityRepository.onForegrounded()
     }
 }
 
@@ -255,7 +298,7 @@ val LocalSetBottomBarHidden = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
 
 // The sub-screens that can appear over the tab content.
 private enum class SubScreen {
-    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy, MonthlyProgress, Notifications, Backup
+    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy, MonthlyProgress, Notifications, Backup, Security
 }
 
 // ---------- Main Scaffold with Bottom Navigation ----------
@@ -281,6 +324,7 @@ fun MainAppScaffold() {
     var showMonthlyProgress by rememberSaveable { mutableStateOf(false) }
     var showNotifications by rememberSaveable { mutableStateOf(false) }
     var showBackup by rememberSaveable { mutableStateOf(false) }
+    var showSecurity by rememberSaveable { mutableStateOf(false) }
 
     // True while the Notes side menu (push drawer) is open: the bottom bar hides and the notes
     // screen grows into the space it leaves.
@@ -306,6 +350,7 @@ fun MainAppScaffold() {
         showMonthlyProgress -> SubScreen.MonthlyProgress
         showNotifications -> SubScreen.Notifications
         showBackup -> SubScreen.Backup
+        showSecurity -> SubScreen.Security
         else -> null
     }
 
@@ -339,6 +384,7 @@ fun MainAppScaffold() {
             SubScreen.MonthlyProgress -> showMonthlyProgress = false
             SubScreen.Notifications -> showNotifications = false
             SubScreen.Backup -> showBackup = false
+            SubScreen.Security -> showSecurity = false
             null -> {}
         }
     }
@@ -463,6 +509,7 @@ fun MainAppScaffold() {
                         showMonthlyProgress -> 11
                         showNotifications -> 12
                         showBackup -> 13
+                        showSecurity -> 14
                         else -> 0
                     },
                     transitionSpec = {
@@ -529,6 +576,7 @@ fun MainAppScaffold() {
                                                 onOpenPrivacy = { showPrivacy = true },
                                                 onOpenNotifications = { showNotifications = true },
                                                 onOpenBackup = { showBackup = true },
+                                                onOpenSecurity = { showSecurity = true },
                                                 onOpenAbout = { showAbout = true }
                                             )
                                         }
@@ -575,6 +623,7 @@ fun MainAppScaffold() {
                                         11 -> MonthlyProgressScreen(onBack = { showMonthlyProgress = false })
                                         12 -> NotificationSettingsScreen(onBack = { showNotifications = false })
                                         13 -> BackupScreen(onBack = { showBackup = false })
+                                        14 -> SecuritySettingsScreen(onBack = { showSecurity = false })
                                     }
                                 }
                             }

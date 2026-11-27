@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.harsha.myapplication.*
 import com.harsha.myapplication.data.BackupRepository
+import com.harsha.myapplication.data.SecurityRepository
 import com.harsha.myapplication.data.DriveBackup
 import com.harsha.myapplication.scripture.BibleData
 import com.harsha.myapplication.ui.theme.pressScale as themePressScale
@@ -82,6 +84,7 @@ fun SettingsScreen(
     onOpenCustomizeApp: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
+    onOpenSecurity: () -> Unit = {},
     onOpenTerms: () -> Unit = {},
     onOpenPrivacy: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
@@ -184,6 +187,25 @@ fun SettingsScreen(
                         title = "Backup & restore",
                         subtitle = backupSubtitle,
                         onClick = onOpenBackup,
+                        showChevron = true
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(SectionGap))
+
+            // ── Security (PIN lock) ──
+            Column(Modifier.revealOnEnter(index = 2, playOnceKey = "settings-security")) {
+                SectionHeader("Privacy")
+                Spacer(Modifier.height(8.dp))
+                GroupedList(items = listOf(Unit)) { _, pos ->
+                    SettingsListItem(
+                        pos = pos,
+                        tone = Tone.Primary,
+                        leadingIcon = Icons.Outlined.Lock,
+                        title = "App lock",
+                        subtitle = if (SecurityRepository.isEnabled) "On · PIN required" else "Protect names, addresses and notes",
+                        onClick = onOpenSecurity,
                         showChevron = true
                     )
                 }
