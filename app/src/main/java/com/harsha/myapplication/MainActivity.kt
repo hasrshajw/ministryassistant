@@ -455,11 +455,13 @@ fun MainAppScaffold() {
                 animationSpec = Motion.spatialDefaultDp,
                 label = "contentBottomPadding",
             )
+            // A spring animation can overshoot below its target (e.g. toward 0.dp when the system
+            // navigation inset is 0), and Compose throws "Padding must be non-negative" on that.
             val innerPadding = PaddingValues(
-                start = scaffoldPadding.calculateStartPadding(layoutDirection),
-                top = scaffoldPadding.calculateTopPadding(),
-                end = scaffoldPadding.calculateEndPadding(layoutDirection),
-                bottom = bottomPadding,
+                start = scaffoldPadding.calculateStartPadding(layoutDirection).coerceAtLeast(0.dp),
+                top = scaffoldPadding.calculateTopPadding().coerceAtLeast(0.dp),
+                end = scaffoldPadding.calculateEndPadding(layoutDirection).coerceAtLeast(0.dp),
+                bottom = bottomPadding.coerceAtLeast(0.dp),
             )
             // The Scaffold already reserves the status bar and the bottom bar (which handles the
             // system navigation inset itself). Each screen applies this modifier itself, which pads it
