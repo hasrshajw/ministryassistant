@@ -912,18 +912,12 @@ private fun DownloadableBibleRow(
                                             color = colors.onSurface
                                         )
                                     } else {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(44.dp),
-                                            strokeWidth = 4.dp,
-                                            trackColor = colors.secondaryContainer
-                                        )
+                                        LoadingIndicator(modifier = Modifier.size(44.dp))
                                     }
                                 }
 
-                                DownloadPhase.Importing -> CircularProgressIndicator(
-                                    modifier = Modifier.size(44.dp),
-                                    strokeWidth = 4.dp,
-                                    trackColor = colors.secondaryContainer
+                                DownloadPhase.Importing -> LoadingIndicator(
+                                    modifier = Modifier.size(44.dp)
                                 )
 
                                 DownloadPhase.Failed -> FilledTonalButton(

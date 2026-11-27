@@ -365,9 +365,8 @@ private fun SignInPromptCard(
                     .height(48.dp),
             ) {
                 if (connecting) {
-                    CircularProgressIndicator(
+                    LoadingIndicator(
                         modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
                         color = colors.onPrimary,
                     )
                     Spacer(Modifier.width(8.dp))

@@ -871,7 +871,7 @@ private fun BibleSourceRow(
                         strokeWidth = 3.dp
                     )
                 state is BibleDownloads.State.Downloading || state is BibleDownloads.State.Importing ->
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                    LoadingIndicator(modifier = Modifier.size(28.dp))
                 state is BibleDownloads.State.Failed ->
                     FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp)) {
                         Text("Retry")
