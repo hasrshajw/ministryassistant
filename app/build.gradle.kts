@@ -63,4 +63,8 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-config")
+
+    // Google Sign-In + Drive appDataFolder backups
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+    implementation("com.google.android.gms:play-services-auth-base:18.1.0")
 }
