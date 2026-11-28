@@ -1,6 +1,7 @@
 package com.harsha.myapplication
 
 import com.harsha.myapplication.telemetry.CrashReporter
+import android.content.Intent
 import android.os.Bundle
 import com.harsha.myapplication.ui.security.SecuritySettingsScreen
 import com.harsha.myapplication.ui.security.LockScreen
@@ -99,6 +100,7 @@ import com.harsha.myapplication.ui.settings.NotificationSettingsScreen
 import com.harsha.myapplication.ui.settings.BackupScreen
 import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
+import com.harsha.myapplication.notifications.NotificationNav
 import com.harsha.myapplication.notifications.ReminderScheduler
 import com.harsha.myapplication.data.HomeLayoutRepository
 import com.harsha.myapplication.data.FeedbackRepository
@@ -160,6 +162,7 @@ data class Recommended(val title: String, val imageUrl: String? = null)
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleNotificationIntent(intent)
         // Returns immediately: saved Bibles are read on a background thread.
         BibleData.init(applicationContext)
         NotesRepository.init(applicationContext)
@@ -280,6 +283,22 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    /** Visit / before / after / overdue taps carry recordId → open that person's profile. */
+    private fun handleNotificationIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.action != "NOTIFICATION_CLICK") return
+        val recordId = intent.getStringExtra("recordId").orEmpty()
+        if (recordId.isNotBlank()) {
+            NotificationNav.openPerson(recordId)
+        }
+    }
+
     override fun onStop() {
         super.onStop()
         SecurityRepository.onBackgrounded()
@@ -331,6 +350,14 @@ private enum class SubScreen {
 @Composable
 fun MainAppScaffold() {
     var selectedScreen by rememberSaveable { mutableIntStateOf(0) } // 0:Home 1:Notes 2:People 3:Settings
+
+    // Notification tap → People tab so PersonDetail can open
+    LaunchedEffect(NotificationNav.requestPeopleTab) {
+        if (NotificationNav.requestPeopleTab) {
+            selectedScreen = 2
+            NotificationNav.peopleTabHandled()
+        }
+    }
     var showBibles by rememberSaveable { mutableStateOf(false) }
     var showDailyText by rememberSaveable { mutableStateOf(false) }
     var selectedDayIndex by rememberSaveable { mutableIntStateOf(0) }

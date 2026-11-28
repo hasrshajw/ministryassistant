@@ -259,7 +259,7 @@ object NotificationHelper {
             action = "NOTIFICATION_CLICK"
             putExtra("route", route)
             if (recordId.isNotEmpty()) putExtra("recordId", recordId)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pi = PendingIntent.getActivity(
             ctx, id, intent,

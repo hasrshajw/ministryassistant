@@ -2,6 +2,7 @@
 
 package com.harsha.myapplication.ui.people
 
+import com.harsha.myapplication.notifications.NotificationNav
 import com.harsha.myapplication.telemetry.CrashReporter
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -130,6 +131,14 @@ private fun PeopleContent(onPersonClick: (String) -> Unit) {
     var sort by rememberSaveable { mutableStateOf(PersonSort.Date) }
     var showAddForm by rememberSaveable { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Open profile when a visit / before / after / overdue notification is tapped
+    LaunchedEffect(NotificationNav.pendingPersonId) {
+        val id = NotificationNav.pendingPersonId ?: return@LaunchedEffect
+        if (id.isNotBlank()) {
+            selectedId = NotificationNav.consumePersonId()
+        }
+    }
 
     LifecycleResumeEffect(Unit) {
         records = PeopleRepository.load(context)
