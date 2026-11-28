@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.security
 
 import androidx.compose.animation.AnimatedContent
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
@@ -213,7 +214,7 @@ private fun SecurityHome(
                 }
             }
             Spacer(Modifier.height(20.dp))
-            Surface(shape = RoundedCornerShape(28.dp), color = colors.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
+            Surface(shape = ShapeLargeIncreased, color = colors.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.Info, null, tint = colors.onSecondaryContainer)
                     Text(

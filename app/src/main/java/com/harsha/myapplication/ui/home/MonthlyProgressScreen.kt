@@ -1,6 +1,7 @@
 package com.harsha.myapplication.ui.home
 
 import androidx.compose.foundation.Canvas
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,7 +128,7 @@ fun MonthlyProgressScreen(onBack: () -> Unit) {
             // ── Summary ─────────────────────────────────────────
             item {
                 Surface(
-                    shape = RoundedCornerShape(28.dp),
+                    shape = ShapeLargeIncreased,
                     color = colors.primaryContainer,
                     contentColor = colors.onPrimaryContainer,
                     modifier = Modifier.fillMaxWidth().revealOnEnter(index = 3),

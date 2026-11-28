@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.security
 
 import androidx.compose.animation.AnimatedContent
+import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -427,7 +428,7 @@ internal fun QuestionPanel(
         Spacer(Modifier.height(16.dp))
         SecurityQuestion.entries.forEach { q ->
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                Modifier.fillMaxWidth().clip(AppShapes.medium)
                     .selectable(selected = q == selected, role = Role.RadioButton, onClick = { selected = q })
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,

@@ -1,6 +1,7 @@
 package com.harsha.myapplication.ui.bible
 
 import androidx.compose.animation.AnimatedContent
+import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -275,7 +276,7 @@ fun BookBrowserDialog(
                     scaleIn(spring(dampingRatio = 0.88f, stiffness = 380f), initialScale = 0.92f) +
                     slideInVertically(Motion.spatialDefault<IntOffset>()) { it / 14 },
             exit = fadeOut(Motion.effectsFast) +
-                    scaleOut(tween(180), targetScale = 0.94f),
+                    scaleOut(Motion.spatialFast(), targetScale = 0.94f),
         ) {
             Surface(
                 modifier = Modifier
@@ -612,7 +613,7 @@ private fun SplitPicker(
                 Surface(
                     onClick = { onChapterSelected(ch) },
                     interactionSource = src,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = AppShapes.medium,
                     color = if (selected) colors.secondaryContainer else Color.Transparent,
                     contentColor = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
                     modifier = Modifier
@@ -692,12 +693,12 @@ private fun SplitPicker(
                     // Animate selection rather than flipping.
                     val container by animateColorAsState(
                         targetValue = if (picked) colors.primaryContainer else colors.surfaceContainerHigh,
-                        animationSpec = tween(200),
+                        animationSpec = Motion.effectsDefault<Color>(),
                         label = "verseContainer"
                     )
                     val content by animateColorAsState(
                         targetValue = if (picked) colors.onPrimaryContainer else colors.onSurface,
-                        animationSpec = tween(200),
+                        animationSpec = Motion.effectsDefault<Color>(),
                         label = "verseContent"
                     )
                     val borderWidth by animateDpAsState(
@@ -707,7 +708,7 @@ private fun SplitPicker(
                     )
                     val borderColor by animateColorAsState(
                         targetValue = if (picked) colors.primary else Color.Transparent,
-                        animationSpec = tween(200),
+                        animationSpec = Motion.effectsDefault<Color>(),
                         label = "verseBorderColor"
                     )
                     val weightFloat by animateFloatAsState(

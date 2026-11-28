@@ -7,6 +7,7 @@
 package com.harsha.myapplication.ui.people
 
 import com.harsha.myapplication.telemetry.CrashReporter
+import com.harsha.myapplication.ui.theme.AppShapes
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -419,7 +420,7 @@ private fun MenuRow(label: String, icon: ImageVector, textColor: Color, iconTint
     DropdownMenuItem(
         modifier = Modifier
             .padding(horizontal = 8.dp)
-            .clip(RoundedCornerShape(16.dp)),
+            .clip(AppShapes.medium),
         text = { Text(label, style = MaterialTheme.typography.bodyLarge, color = textColor) },
         leadingIcon = {
             Box(
@@ -1405,7 +1406,7 @@ private fun CompactNoteField(
                 Box(
                     Modifier
                         .size(30.dp)
-                        .background(colors.secondaryContainer, RoundedCornerShape(10.dp)),
+                        .background(colors.secondaryContainer, AppShapes.small),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(icon, contentDescription = null, tint = colors.onSecondaryContainer, modifier = Modifier.size(16.dp))

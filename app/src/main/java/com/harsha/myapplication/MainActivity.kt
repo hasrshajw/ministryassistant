@@ -264,9 +264,9 @@ class MainActivity : FragmentActivity() {
                 AnimatedContent(
                     targetState = SetupRepository.isSetupCompleted,
                     transitionSpec = {
-                        (fadeIn(tween(240, delayMillis = 40)) +
-                            scaleIn(tween(300), initialScale = 0.96f)) togetherWith
-                            fadeOut(tween(160))
+                        (fadeIn(Motion.effectsDefault) +
+                            scaleIn(Motion.spatialDefault(), initialScale = 0.96f)) togetherWith
+                            fadeOut(Motion.effectsFast)
                     },
                     label = "setup_to_main",
                 ) { setupDone ->
