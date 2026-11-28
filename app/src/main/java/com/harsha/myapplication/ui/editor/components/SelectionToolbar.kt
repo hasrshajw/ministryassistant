@@ -222,8 +222,8 @@ internal fun SelectionToolbar(
         val selectAll = selectAllAction
         val hasSelection = copy != null || cut != null
         val toolbarColors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-            containerColor = ToolbarBg,
-            contentColor = ToolbarFg,
+            toolbarContainerColor = ToolbarBg,
+            toolbarContentColor = ToolbarFg,
         )
         AnimatedContent(
             targetState = state.mode,
@@ -380,7 +380,7 @@ internal fun ToolbarButton(
             onCheckedChange = { onClick() },
             modifier = Modifier.size(size),
             colors = IconButtonDefaults.iconToggleButtonColors(
-                contentColor = ToolbarFg,
+                toolbarContentColor = ToolbarFg,
                 checkedContainerColor = ToolbarChecked,
                 checkedContentColor = ToolbarAccent
             ),

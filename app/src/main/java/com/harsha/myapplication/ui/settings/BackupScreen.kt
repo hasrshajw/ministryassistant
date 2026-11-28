@@ -512,7 +512,7 @@ private fun BackupHero(
                         var splitMenuOpen by remember { mutableStateOf(false) }
                         val size = SplitButtonDefaults.MediumContainerHeight
                         Box(modifier = Modifier.fillMaxWidth()) {
-                            SplitButton(
+                            SplitButtonLayout(
                                 modifier = Modifier.fillMaxWidth(),
                                 leadingButton = {
                                     SplitButtonDefaults.LeadingButton(
