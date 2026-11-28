@@ -28,7 +28,7 @@ fun ExpressiveSlider(
     onValueChangeFinished: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val state = remember(valueRange, steps) { SliderState(value, steps, null, valueRange) }
+    val state = remember(valueRange, steps) { SliderState(value, steps, valueRange) }
     if (state.value != value) state.value = value
     Slider(
         state = state,
