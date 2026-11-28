@@ -133,7 +133,7 @@ fun TermsScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Surface(
-                        shapes = ButtonDefaults.shapes(),
+                        shape = AppShapes.medium,
                         color = colors.primaryContainer,
                         modifier = Modifier.size(48.dp)
                     ) {

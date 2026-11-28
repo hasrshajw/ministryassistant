@@ -387,7 +387,7 @@ private fun ProfileMenu(
             onDismissRequest = { open = false },
             modifier = Modifier.widthIn(min = 230.dp),
             offset = DpOffset(0.dp, 8.dp),
-            shapes = ButtonDefaults.shapes(),
+            shape = MaterialTheme.shapes.large,
             containerColor = colors.surfaceContainerLow,
             tonalElevation = 0.dp,
             shadowElevation = 8.dp,
@@ -1091,7 +1091,7 @@ private fun VisitLogCard(
             ) {
                 Column(Modifier.padding(top = 12.dp)) {
                     Surface(
-                        shapes = ButtonDefaults.shapes(),
+                        shape = MaterialTheme.shapes.large,
                         color = colors.surfaceContainerHigh,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -1393,7 +1393,7 @@ private fun CompactNoteField(
     )
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shapes = ButtonDefaults.shapes(),
+        shape = MaterialTheme.shapes.large,
         color = container,
         border = BorderStroke(2.dp, ring),
     ) {
@@ -1487,7 +1487,7 @@ private fun PickerCard(
     Surface(
         onClick = { clearFocus(); onClick() },
         modifier = modifier.pressScale(source, pressedScale = 0.95f),
-        shapes = ButtonDefaults.shapes(),
+        shape = MaterialTheme.shapes.large,
         color = colors.surfaceContainer,
         border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f)),
         interactionSource = source,
@@ -1681,7 +1681,7 @@ private fun AddressSheet(address: String, onDismiss: () -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
             Surface(
-                shapes = ButtonDefaults.shapes(),
+                shape = MaterialTheme.shapes.large,
                 color = colors.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth(),
             ) {

@@ -5,6 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -12,8 +13,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 
 /**
- * Material 3 Expressive slider: tall rounded track with a gap around a slim vertical pill handle
- * that narrows while pressed/dragged.
+ * Material 3 Expressive slider: tall rounded track with a gap around a slim vertical pill handle.
+ * Keeps the simple value/onValueChange API; the value is the source of truth.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -27,13 +28,13 @@ fun ExpressiveSlider(
     onValueChangeFinished: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val state = remember(valueRange, steps) { SliderState(value, steps, null, valueRange) }
+    if (state.value != value) state.value = value
     Slider(
-        value = value,
+        state = state,
         onValueChange = onValueChange,
         modifier = modifier,
         enabled = enabled,
-        valueRange = valueRange,
-        steps = steps,
         onValueChangeFinished = onValueChangeFinished,
         interactionSource = interactionSource,
         thumb = {
@@ -43,9 +44,9 @@ fun ExpressiveSlider(
                 thumbSize = DpSize(4.dp, 44.dp),
             )
         },
-        track = { state ->
+        track = { sliderState ->
             SliderDefaults.Track(
-                sliderState = state,
+                sliderState = sliderState,
                 enabled = enabled,
                 thumbTrackGapSize = 6.dp,
                 trackInsideCornerSize = 3.dp,
