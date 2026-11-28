@@ -17,24 +17,27 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.SpringSpec
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MotionScheme
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.node.LayoutModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.Constraints
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * ============================================================================
@@ -61,73 +64,52 @@ import androidx.compose.ui.unit.Dp
  * Prefer MaterialTheme.motionScheme inside components; use these for app-level
  * transitions that live outside Material components.
  */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 object Motion {
 
-    // ------------------------------------------------------------------ Springs
-    // `SpringSpec<Float>` are the primary variants — every `animateFloatAsState`,
-    // `animateColorAsState` target, or `HorizontalPager` spring accepts them.
+    /**
+     * The single source of truth for motion. The theme installs this same instance
+     * (Theme.kt -> MaterialExpressiveTheme(motionScheme = Motion.scheme)), so Material components
+     * reading MaterialTheme.motionScheme and the app-level specs below can never drift apart.
+     */
+    val scheme: MotionScheme = MotionScheme.expressive()
 
+    // ------------------------------------------------------------------ Spatial
     /** Snappy. Use for in-place moves that need to feel instant: button morph, pill slide. */
-    val spatialFast: SpringSpec<Float> =
-        spring(dampingRatio = 0.6f, stiffness = 1400f)
+    val spatialFast: FiniteAnimationSpec<Float> = scheme.fastSpatialSpec()
 
     /** The workhorse. Use for state swaps, panel slides, tab changes. */
-    val spatialDefault: SpringSpec<Float> =
-        spring(dampingRatio = 0.8f, stiffness = 700f)
+    val spatialDefault: FiniteAnimationSpec<Float> = scheme.defaultSpatialSpec()
 
     /** Deliberate. Use for full-screen / hierarchical navigation. */
-    val spatialSlow: SpringSpec<Float> =
-        spring(dampingRatio = 0.8f, stiffness = 300f)
+    val spatialSlow: FiniteAnimationSpec<Float> = scheme.slowSpatialSpec()
 
-    /** Container transform (card→detail, FAB→sheet). Slight extra bounce. */
-    val containerTransform: SpringSpec<Float> =
-        spring(dampingRatio = 0.8f, stiffness = 700f)
+    /** Container transform (card->detail, FAB->sheet). */
+    val containerTransform: FiniteAnimationSpec<Float> = scheme.defaultSpatialSpec()
 
     // Dp variants for size animations (`animateDpAsState` needs AnimationSpec<Dp>)
-    val spatialFastDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.6f, stiffness = 1400f)
-    val spatialDefaultDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.8f, stiffness = 700f)
-    val spatialSlowDp: SpringSpec<Dp> =
-        spring(dampingRatio = 0.8f, stiffness = 300f)
+    val spatialFastDp: FiniteAnimationSpec<Dp> = scheme.fastSpatialSpec()
+    val spatialDefaultDp: FiniteAnimationSpec<Dp> = scheme.defaultSpatialSpec()
+    val spatialSlowDp: FiniteAnimationSpec<Dp> = scheme.slowSpatialSpec()
 
     // ---------------------------------------------------------------- Effects
-    // FastOutLinearIn = "decelerate into the end". Reads as instant but smooth.
-
     /** Micro fades: ripple-adjacent alpha, colour swap on press. */
-    val effectsFast: FiniteAnimationSpec<Float> =
-        spring(dampingRatio = 1f, stiffness = 3800f)
+    val effectsFast: FiniteAnimationSpec<Float> = scheme.fastEffectsSpec()
 
     /** Standard visibility fades: AnimatedVisibility, Crossfade. */
-    val effectsDefault: FiniteAnimationSpec<Float> =
-        spring(dampingRatio = 1f, stiffness = 1600f)
+    val effectsDefault: FiniteAnimationSpec<Float> = scheme.defaultEffectsSpec()
 
     /** Long alpha ramps: overlay scrims, page-level crossfades. */
-    val effectsSlow: FiniteAnimationSpec<Float> =
-        spring(dampingRatio = 1f, stiffness = 800f)
+    val effectsSlow: FiniteAnimationSpec<Float> = scheme.slowEffectsSpec()
 
     // ------------------------------------------------------- Generic helpers
-    // For animation of other types (Int, Color, Dp) where the property above
-    // has the wrong generic. Usage:  Motion.spatialFast<Dp>()
-
-    fun <T> spatialFast(): SpringSpec<T> =
-        spring(dampingRatio = 0.6f, stiffness = 1400f)
-
-    fun <T> spatialDefault(): SpringSpec<T> =
-        spring(dampingRatio = 0.8f, stiffness = 700f)
-
-    fun <T> spatialSlow(): SpringSpec<T> =
-        spring(dampingRatio = 0.8f, stiffness = 300f)
-
-    // Effects (colour, alpha) for non-Float types, e.g. animateColorAsState(..., Motion.effectsDefault())
-    fun <T> effectsFast(): SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = 3800f)
-
-    fun <T> effectsDefault(): SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = 1600f)
-
-    fun <T> effectsSlow(): SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = 800f)
+    // For animation of other types (Int, Color, IntOffset...). Usage:  Motion.spatialFast<Dp>()
+    fun <T> spatialFast(): FiniteAnimationSpec<T> = scheme.fastSpatialSpec()
+    fun <T> spatialDefault(): FiniteAnimationSpec<T> = scheme.defaultSpatialSpec()
+    fun <T> spatialSlow(): FiniteAnimationSpec<T> = scheme.slowSpatialSpec()
+    fun <T> effectsFast(): FiniteAnimationSpec<T> = scheme.fastEffectsSpec()
+    fun <T> effectsDefault(): FiniteAnimationSpec<T> = scheme.defaultEffectsSpec()
+    fun <T> effectsSlow(): FiniteAnimationSpec<T> = scheme.slowEffectsSpec()
 }
 
 /**
@@ -176,8 +158,9 @@ object MotionEasing {
 
 /**
  * Scales the composable down to [pressedScale] while [interactionSource] is in
- * a [PressInteraction.Press], then springs back on release. Uses a bouncier
- * spring on release than press for that satisfying "snap back" feel.
+ * a [PressInteraction.Press], then springs back on release.
+ * Implemented as a [Modifier.Node]: no composition, and the scale is only read in the
+ * layer block, so nothing recomposes while it animates.
  *
  * @param pressedScale 1.0 = no press effect. 0.96 is the M3 default. Use 0.94
  *   for large cards, 0.98 for tiny chips.
@@ -187,28 +170,89 @@ fun Modifier.pressScale(
     interactionSource: InteractionSource,
     pressedScale: Float = 0.96f,
     enabled: Boolean = true,
-): Modifier = composed {
-    // State read only inside the graphicsLayer lambda → zero recompositions per frame.
-    var pressed by remember { mutableStateOf(false) }
+): Modifier = this then PressScaleElement(interactionSource, pressedScale, enabled)
 
-    LaunchedEffect(interactionSource) {
-        interactionSource.interactions.collect { interaction ->
-            when (interaction) {
-                is PressInteraction.Press -> pressed = true
-                is PressInteraction.Release,
-                is PressInteraction.Cancel -> pressed = false
+private data class PressScaleElement(
+    val interactionSource: InteractionSource,
+    val pressedScale: Float,
+    val enabled: Boolean,
+) : ModifierNodeElement<PressScaleNode>() {
+    override fun create() = PressScaleNode(interactionSource, pressedScale, enabled)
+
+    override fun update(node: PressScaleNode) {
+        node.update(interactionSource, pressedScale, enabled)
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "pressScale"
+        properties["pressedScale"] = pressedScale
+        properties["enabled"] = enabled
+    }
+}
+
+private class PressScaleNode(
+    private var interactionSource: InteractionSource,
+    private var pressedScale: Float,
+    private var enabled: Boolean,
+) : Modifier.Node(), LayoutModifierNode {
+
+    private val scale = Animatable(1f)
+    private var pressed = false
+    private var collectJob: Job? = null
+    private var animateJob: Job? = null
+
+    override fun onAttach() {
+        collect()
+    }
+
+    override fun onDetach() {
+        pressed = false
+    }
+
+    fun update(source: InteractionSource, newPressedScale: Float, newEnabled: Boolean) {
+        val sourceChanged = source != interactionSource
+        interactionSource = source
+        pressedScale = newPressedScale
+        enabled = newEnabled
+        if (sourceChanged) {
+            pressed = false
+            collect()
+        }
+        animateToTarget()
+    }
+
+    private fun collect() {
+        collectJob?.cancel()
+        collectJob = coroutineScope.launch {
+            interactionSource.interactions.collect { interaction ->
+                when (interaction) {
+                    is PressInteraction.Press -> pressed = true
+                    is PressInteraction.Release,
+                    is PressInteraction.Cancel -> pressed = false
+                    else -> Unit
+                }
+                animateToTarget()
             }
         }
     }
 
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) pressedScale else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
-        label = "pressScale",
-    )
-    graphicsLayer {
-        scaleX = scale
-        scaleY = scale
+    private fun animateToTarget() {
+        animateJob?.cancel()
+        val target = if (pressed && enabled) pressedScale else 1f
+        animateJob = coroutineScope.launch { scale.animateTo(target, Motion.spatialFast) }
+    }
+
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) {
+            placeable.placeWithLayer(0, 0) {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
+        }
     }
 }
 
@@ -217,9 +261,10 @@ fun Modifier.pressScale(
  * `Surface(onClick)` / `Card(onClick)` / `Button` (those have their own onClick).
  * Ripple indication is preserved.
  *
- * Pass [interactionSource] explicitly only if the caller needs the source for
- * something else (e.g. to disable the effect externally). Otherwise omit it.
+ * Composable modifier factory (it remembers a fallback interaction source), so call it from
+ * composition. Pass [interactionSource] only if the caller needs the source for something else.
  */
+@Composable
 fun Modifier.pressScaleClickable(
     interactionSource: MutableInteractionSource? = null,
     pressedScale: Float = 0.96f,
@@ -227,12 +272,12 @@ fun Modifier.pressScaleClickable(
     onClickLabel: String? = null,
     role: Role? = null,
     onClick: () -> Unit,
-): Modifier = composed {
+): Modifier {
     // Always create the fallback so `remember` call counts stay stable.
     val fallback = remember { MutableInteractionSource() }
     val source = interactionSource ?: fallback
 
-    pressScale(source, pressedScale, enabled)
+    return pressScale(source, pressedScale, enabled)
         .clickable(
             interactionSource = source,
             indication = androidx.compose.material3.ripple(),
@@ -259,7 +304,7 @@ object MotionTransitions {
 
     fun fadeThrough(): ContentTransform =
         (fadeIn(tween(210, delayMillis = 90, easing = LinearOutSlowInEasing)) +
-                scaleIn(spring(dampingRatio = 0.9f, stiffness = 400f), initialScale = 0.92f)) togetherWith
+                scaleIn(Motion.spatialDefault<Float>(), initialScale = 0.92f)) togetherWith
                 fadeOut(tween(90, easing = FastOutLinearInEasing))
 
     fun push(): ContentTransform =
@@ -275,7 +320,7 @@ object MotionTransitions {
 
     fun containerFade(forward: Boolean): ContentTransform =
         ((fadeIn(tween(220, delayMillis = 60, easing = LinearOutSlowInEasing)) +
-                scaleIn(spring(dampingRatio = 0.9f, stiffness = 400f), initialScale = 0.96f)) togetherWith
+                scaleIn(Motion.spatialDefault<Float>(), initialScale = 0.96f)) togetherWith
                 fadeOut(tween(120)))
             .apply { targetContentZIndex = if (forward) 1f else -1f }
 }
@@ -289,7 +334,8 @@ private val playedReveals = mutableSetOf<Any>()
 
 /**
  * Fades + lifts a composable into place with a spring, optionally staggered by [index].
- * Graphics-layer only: no recomposition while it runs.
+ * Implemented as a [Modifier.Node]; the animation is read only in the layer block, so there is
+ * no recomposition while it runs.
  *
  * @param playOnceKey when non-null the reveal plays once per process for that key; later
  *   compositions (e.g. coming back to a tab) start fully visible.
@@ -300,19 +346,64 @@ fun Modifier.revealOnEnter(
     maxSteps: Int = 8,
     offsetY: Dp = 20.dp,
     playOnceKey: Any? = null,
-): Modifier = composed {
-    val skip = playOnceKey != null && playOnceKey in playedReveals
-    val progress = remember { Animatable(if (skip) 1f else 0f) }
-    LaunchedEffect(Unit) {
-        if (progress.value < 1f) {
-            if (playOnceKey != null) playedReveals += playOnceKey
-            delay(index.coerceIn(0, maxSteps) * stepMillis.toLong())
-            progress.animateTo(1f, spring(dampingRatio = 0.85f, stiffness = 320f))
+): Modifier = this then RevealOnEnterElement(index, stepMillis, maxSteps, offsetY, playOnceKey)
+
+private data class RevealOnEnterElement(
+    val index: Int,
+    val stepMillis: Int,
+    val maxSteps: Int,
+    val offsetY: Dp,
+    val playOnceKey: Any?,
+) : ModifierNodeElement<RevealOnEnterNode>() {
+    override fun create() = RevealOnEnterNode(index, stepMillis, maxSteps, offsetY, playOnceKey)
+
+    override fun update(node: RevealOnEnterNode) {
+        node.index = index
+        node.stepMillis = stepMillis
+        node.maxSteps = maxSteps
+        node.offsetY = offsetY
+        node.playOnceKey = playOnceKey
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "revealOnEnter"
+        properties["index"] = index
+    }
+}
+
+private class RevealOnEnterNode(
+    var index: Int,
+    var stepMillis: Int,
+    var maxSteps: Int,
+    var offsetY: Dp,
+    var playOnceKey: Any?,
+) : Modifier.Node(), LayoutModifierNode {
+
+    private val progress = Animatable(
+        if (playOnceKey != null && playOnceKey in playedReveals) 1f else 0f
+    )
+
+    override fun onAttach() {
+        coroutineScope.launch {
+            if (progress.value < 1f) {
+                playOnceKey?.let { playedReveals += it }
+                delay(index.coerceIn(0, maxSteps) * stepMillis.toLong())
+                progress.animateTo(1f, Motion.spatialDefault)
+            }
         }
     }
-    graphicsLayer {
-        val p = progress.value
-        alpha = (p * 1.6f).coerceIn(0f, 1f)
-        translationY = (1f - p) * offsetY.toPx()
+
+    override fun MeasureScope.measure(
+        measurable: Measurable,
+        constraints: Constraints,
+    ): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) {
+            placeable.placeWithLayer(0, 0) {
+                val p = progress.value
+                alpha = (p * 1.6f).coerceIn(0f, 1f)
+                translationY = (1f - p) * offsetY.toPx()
+            }
+        }
     }
 }

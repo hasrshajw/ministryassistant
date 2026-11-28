@@ -5,7 +5,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -167,11 +166,11 @@ fun MyApplicationTheme(
 ) {
     val colorScheme = rememberAppColorScheme(palette, darkTheme, pureBlack, dynamicColor)
 
-    // MotionScheme.expressive() gives every Material component spring-based spatial/effects
+    // Motion.scheme (MotionScheme.expressive(), shared with the app-level Motion specs) gives every Material component spring-based spatial/effects
     // motion (the same family as the tokens in Motion.kt).
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
-        motionScheme = MotionScheme.expressive(),
+        motionScheme = Motion.scheme,
         shapes = AppShapes,
         typography = Typography,
     ) {
