@@ -19,7 +19,7 @@ import java.util.Date
 
 /**
  * Schedules OS alarms for visit exact/before/after/overdue, daily morning,
- * evening update, and weekly summary. [BootReceiver] re-registers after reboot.
+ * daily text, and weekly summary. [BootReceiver] re-registers after reboot.
  */
 object ReminderScheduler {
     const val ACTION_REMINDER = "com.harsha.myapplication.ACTION_VISIT_REMINDER"
@@ -34,7 +34,7 @@ object ReminderScheduler {
     private const val STATE_PREFS = "reminder_state"
 
     private const val RC_DAILY = 100
-    private const val RC_EVENING = 101
+    private const val RC_DAILY_TEXT = 101
     private const val RC_WEEKLY = 102
 
     fun rescheduleAll(ctx: Context, catchUpMissed: Boolean = false) {
@@ -50,7 +50,7 @@ object ReminderScheduler {
         }
 
         scheduleDaily(app)
-        scheduleEvening(app)
+        scheduleDailyText(app)
         scheduleWeekly(app)
         people.forEach { schedule(app, it) }
         if (catchUpMissed) catchUp(app)
@@ -134,9 +134,10 @@ object ReminderScheduler {
         setAlarm(ctx, nextTimeOfDay(prefs.dailySummaryMinutes).timeInMillis, systemPi(ctx, "daily", RC_DAILY))
     }
 
-    private fun scheduleEvening(ctx: Context) {
-        if (!NotificationPrefsRepository.prefs.masterEnabled) { cancelRequest(ctx, RC_EVENING); return }
-        setAlarm(ctx, nextTimeOfDay(20 * 60 + 30).timeInMillis, systemPi(ctx, "evening", RC_EVENING))
+    private fun scheduleDailyText(ctx: Context) {
+        val prefs = NotificationPrefsRepository.prefs
+        if (!prefs.dailyTextActive) { cancelRequest(ctx, RC_DAILY_TEXT); return }
+        setAlarm(ctx, nextTimeOfDay(prefs.dailyTextMinutes).timeInMillis, systemPi(ctx, "daily_text", RC_DAILY_TEXT))
     }
 
     private fun scheduleWeekly(ctx: Context) {
@@ -154,7 +155,7 @@ object ReminderScheduler {
     }
 
     private fun cancelSystemAlarms(ctx: Context) {
-        cancelRequest(ctx, RC_DAILY); cancelRequest(ctx, RC_EVENING); cancelRequest(ctx, RC_WEEKLY)
+        cancelRequest(ctx, RC_DAILY); cancelRequest(ctx, RC_DAILY_TEXT); cancelRequest(ctx, RC_WEEKLY)
     }
 
     private fun catchUp(ctx: Context) {

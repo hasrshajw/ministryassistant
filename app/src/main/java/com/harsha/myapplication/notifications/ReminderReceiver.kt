@@ -23,9 +23,7 @@ class ReminderReceiver : BroadcastReceiver() {
         try {
             // Re-arm recurring system alarms immediately
             when (type) {
-                "daily" -> ReminderScheduler.rescheduleAll(context)
-                "evening" -> ReminderScheduler.rescheduleAll(context)
-                "weekly" -> ReminderScheduler.rescheduleAll(context)
+                "daily", "daily_text", "weekly" -> ReminderScheduler.rescheduleAll(context)
             }
             handleType(context, type, intent)
         } catch (e: Throwable) {
@@ -44,7 +42,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
             when (type) {
                 "daily" -> if (prefs.dailySummaryActive) handleDaily(context)
-                "evening" -> handleEvening(context)
+                "daily_text" -> if (prefs.dailyTextActive) handleDailyText(context)
                 "weekly" -> if (prefs.weeklySummaryActive) handleWeekly(context)
                 "after_visit" -> handleAfterVisit(context, intent)
                 "overdue_visit" -> handleOverdueVisit(context, intent)
@@ -101,24 +99,12 @@ class ReminderReceiver : BroadcastReceiver() {
             NotificationHelper.showDailySummary(context, returns, studies)
         }
 
-        private fun handleEvening(context: Context) {
+        private fun handleDailyText(context: Context) {
             val state = context.getSharedPreferences("reminder_state", Context.MODE_PRIVATE)
             val today = dateFormat().format(Date())
-            if (state.getString("last_evening", "") == today) return
-
-            val people = PeopleRepository.load(context)
-            var returns = 0
-            var studies = 0
-            for (p in people) {
-                if (p.type.equals("inactive", ignoreCase = true)) continue
-                if (p.nextVisitDate == today) {
-                    if (p.type.equals("study", ignoreCase = true)) studies++ else returns++
-                }
-            }
-            state.edit().putString("last_evening", today).apply()
-            if (returns > 0 || studies > 0) {
-                NotificationHelper.showEveningUpdate(context, returns, studies)
-            }
+            if (state.getString("last_daily_text", "") == today) return
+            state.edit().putString("last_daily_text", today).apply()
+            NotificationHelper.showDailyText(context)
         }
 
         private fun handleWeekly(context: Context) {

@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.harsha.myapplication.MainActivity
 import com.harsha.myapplication.data.GenZPrefsRepository
+import com.harsha.myapplication.data.HoursRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
 import com.harsha.myapplication.data.PersonRecord
 
@@ -20,6 +21,7 @@ object NotificationHelper {
     fun showDailySummary(ctx: Context, returnsCount: Int, studiesCount: Int) {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
+        HoursRepository.init(ctx)
 
         val (title, body) = if (returnsCount > 0 || studiesCount > 0) {
             val items = mutableListOf<String>()
@@ -37,6 +39,27 @@ object NotificationHelper {
             title,
             body,
             route = "home",
+        )
+    }
+
+    /** Prompt to read today's daily text (settings: Daily text reminder). */
+    @SuppressLint("MissingPermission")
+    fun showDailyText(ctx: Context) {
+        if (!AppNotifications.areEnabled(ctx)) return
+        AppNotifications.ensureChannel(ctx)
+        GenZPrefsRepository.init(ctx)
+        val (title, body) = if (GenZPrefsRepository.prefs.enabled) {
+            GenZMessages.morningEmpty(ctx).let { ("Daily Text 📖", "Time for today's text — open the app and read it.") }
+        } else {
+            "Daily text" to "A reminder to read today's text."
+        }
+        post(
+            ctx,
+            AppNotifications.DAILY_CHANNEL_ID,
+            AppNotifications.DAILY_NOTIFICATION_ID + 10,
+            title,
+            body,
+            route = "daily_text",
         )
     }
 
