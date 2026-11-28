@@ -12,6 +12,7 @@ fire with the app closed for weeks, in Doze and in battery saver.
 | Fire | `ReminderReceiver` | Wake lock + `goAsync()`, work off the main thread. The next occurrence is **re-armed first**, then the notification is built |
 | Watchdog | `heartbeat` alarm (every 6 h) | Re-registers every alarm and catches up, in case one was lost |
 | Show | `NotificationHelper` | Gen-Z copy falls back to plain text if it fails; channels are created before posting |
+| Permissions screen | Settings → Permissions (`PermissionsScreen`, `AppPermissions`) | One place that shows the live status of notifications, "Alarms & reminders" and unrestricted battery, with a button to grant each |
 | Exact permission (Android 12+) | `ExactAlarmPrompt` | Asks (at most weekly) for "Alarms & reminders" and upgrades saved reminders as soon as it is granted |
 
 ## Rules that keep it correct

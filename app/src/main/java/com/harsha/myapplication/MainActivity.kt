@@ -97,6 +97,7 @@ import com.harsha.myapplication.ui.legal.PrivacyScreen
 import com.harsha.myapplication.ui.profile.ProfileScreen
 import com.harsha.myapplication.ui.settings.SettingsScreen
 import com.harsha.myapplication.ui.settings.NotificationSettingsScreen
+import com.harsha.myapplication.ui.settings.PermissionsScreen
 import com.harsha.myapplication.ui.settings.BackupScreen
 import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
@@ -346,7 +347,7 @@ val LocalSetBottomBarHidden = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
 
 // The sub-screens that can appear over the tab content.
 private enum class SubScreen {
-    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy, MonthlyProgress, Notifications, Backup, Security
+    Bibles, DailyText, NoteEditor, About, Appearance, Profile, GenZMode, CustomizeApp, Terms, Privacy, MonthlyProgress, Notifications, Backup, Security, Permissions
 }
 
 // ---------- Main Scaffold with Bottom Navigation ----------
@@ -381,6 +382,7 @@ fun MainAppScaffold() {
     var showNotifications by rememberSaveable { mutableStateOf(false) }
     var showBackup by rememberSaveable { mutableStateOf(false) }
     var showSecurity by rememberSaveable { mutableStateOf(false) }
+    var showPermissions by rememberSaveable { mutableStateOf(false) }
 
     // True while the Notes side menu (push drawer) is open: the bottom bar hides and the notes
     // screen grows into the space it leaves.
@@ -407,6 +409,7 @@ fun MainAppScaffold() {
         showNotifications -> SubScreen.Notifications
         showBackup -> SubScreen.Backup
         showSecurity -> SubScreen.Security
+        showPermissions -> SubScreen.Permissions
         else -> null
     }
 
@@ -441,6 +444,7 @@ fun MainAppScaffold() {
             SubScreen.Notifications -> showNotifications = false
             SubScreen.Backup -> showBackup = false
             SubScreen.Security -> showSecurity = false
+            SubScreen.Permissions -> showPermissions = false
             null -> {}
         }
     }
@@ -584,6 +588,7 @@ fun MainAppScaffold() {
                         showNotifications -> 12
                         showBackup -> 13
                         showSecurity -> 14
+                        showPermissions -> 15
                         else -> 0
                     },
                     transitionSpec = {
@@ -650,6 +655,7 @@ fun MainAppScaffold() {
                                                 onOpenTerms = { showTerms = true },
                                                 onOpenPrivacy = { showPrivacy = true },
                                                 onOpenNotifications = { showNotifications = true },
+                                                onOpenPermissions = { showPermissions = true },
                                                 onOpenBackup = { showBackup = true },
                                                 onOpenSecurity = { showSecurity = true },
                                                 onOpenAbout = { showAbout = true }
@@ -699,6 +705,7 @@ fun MainAppScaffold() {
                                         12 -> NotificationSettingsScreen(onBack = { showNotifications = false })
                                         13 -> BackupScreen(onBack = { showBackup = false })
                                         14 -> SecuritySettingsScreen(onBack = { showSecurity = false })
+                                        15 -> PermissionsScreen(onBack = { showPermissions = false })
                                     }
                                 }
                             }

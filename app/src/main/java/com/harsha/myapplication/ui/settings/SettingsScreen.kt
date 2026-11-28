@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
@@ -55,11 +56,13 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.harsha.myapplication.*
 import com.harsha.myapplication.data.BackupRepository
+import com.harsha.myapplication.notifications.AppPermissions
 import com.harsha.myapplication.data.SecurityRepository
 import com.harsha.myapplication.data.DriveBackup
 import com.harsha.myapplication.scripture.BibleData
@@ -95,6 +98,7 @@ fun SettingsScreen(
     onOpenGenZMode: () -> Unit = {},
     onOpenCustomizeApp: () -> Unit = {},
     onOpenNotifications: () -> Unit = {},
+    onOpenPermissions: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
     onOpenSecurity: () -> Unit = {},
     onOpenTerms: () -> Unit = {},
@@ -187,6 +191,12 @@ fun SettingsScreen(
                 items = listOf(
                     RowItem(Icons.Outlined.Palette, "Appearance", onClick = go(onOpenAppearance)),
                     RowItem(Icons.Outlined.Notifications, "Notifications", onClick = go(onOpenNotifications)),
+                    RowItem(
+                        Icons.Outlined.VerifiedUser,
+                        "Permissions",
+                        AppPermissions.summary(LocalContext.current),
+                        go(onOpenPermissions),
+                    ),
                     RowItem(Icons.Outlined.Tune, "Customize App", onClick = go(onOpenCustomizeApp)),
                 ),
             )
