@@ -18,9 +18,9 @@ publications.
 
 ## Tech stack
 
-- Kotlin 2.2, Jetpack Compose (BOM 2026.02.01), Material 3 (expressive alpha)
+- Kotlin 2.4, Jetpack Compose (BOM 2026.11.01), Material 3 1.5.0 stable (Expressive)
 - Android Gradle Plugin 9.4, Gradle Kotlin DSL, version catalog (`gradle/libs.versions.toml`)
-- `minSdk 24` · `compileSdk/targetSdk 37` · Java 11 source level
+- `minSdk 24` · `compileSdk 37.1` / `targetSdk 37` · Java 11 source level
 - Local persistence only (SharedPreferences + app files) — no network permissions required
 
 ## Getting started
@@ -65,7 +65,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for dependency rules and conv
 ## Contributing
 
 - Follow `.editorconfig` (4-space Kotlin, 120 cols).
-- Keep one feature per package under `ui/`; shared UI goes in `ui/components`.
+- Keep one feature per package under `ui/`; shared UI goes in `ui.components`.
 - UI packages may depend on `data`, `scripture`, `ui.theme` and `ui.components` — never on each other's internals.
 - CI: add `.github/workflows/android-ci.yml` (tests, lint, debug build) when ready.
 

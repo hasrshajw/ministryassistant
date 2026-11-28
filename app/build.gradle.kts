@@ -8,7 +8,10 @@ plugins {
 android {
     namespace = "com.harsha.myapplication"
     compileSdk {
-        version = release(37)
+        // Compose BOM 2026.11.01 / Material3 1.5.0 expect API 37.1
+        version = release(37) {
+            minorApiLevel = 1
+        }
     }
 
     defaultConfig {
@@ -38,7 +41,7 @@ android {
 }
 
 dependencies {
-    // Compose — BOM first, then artifacts (no extra versions except material3 alpha for Expressive)
+    // Compose — BOM first; material3 and adaptive-navigation-suite pin stable/paired versions in the catalog
     implementation(platform(libs.androidx.compose.bom))
     implementation("androidx.compose.runtime:runtime")
     implementation("androidx.compose.foundation:foundation")

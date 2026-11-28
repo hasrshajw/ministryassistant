@@ -7,10 +7,10 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.4.0"
-composeBom = "2026.02.01"
-# Pre-release on purpose: Material 3 Expressive APIs are internal in stable 1.4.0.
-material3 = "1.5.0-alpha29"
-material3Adaptive = "1.5.0-alpha29"
+composeBom = "2026.11.01"
+# Material 3 1.5.0 stable (Nov 2026). Adaptive navigation suite tracks 1.6 alpha per Google docs.
+material3 = "1.5.0"
+material3Adaptive = "1.6.0-alpha01"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
