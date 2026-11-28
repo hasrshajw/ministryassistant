@@ -1,5 +1,6 @@
 package com.harsha.myapplication.data
 
+import com.google.android.gms.auth.GoogleAuthException
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.SharedPreferences
@@ -7,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.SystemClock
 import android.text.format.DateUtils
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +31,10 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -100,6 +106,31 @@ sealed interface BackupTask {
     data class Failed(val kind: BackupKind, val message: String) : BackupTask
 }
 
+/** What the top-bar backup button shows. Same on every screen. */
+enum class BackupStatus { Synced, Syncing, Success, Failed }
+
+/** One short, human reason for a failed backup (no stack traces, no raw HTTP bodies). */
+internal fun friendlyBackupError(e: Throwable): String {
+    val msg = e.message.orEmpty()
+    val http = Regex("""\((\d{3})\)""").find(msg)?.groupValues?.get(1)?.toIntOrNull()
+    return when {
+        e is UnknownHostException || e is ConnectException || e is SocketTimeoutException ||
+            e is SSLException || msg.contains("NetworkError") -> "No internet connection."
+        msg.contains("storageQuotaExceeded") || msg.contains("quota", ignoreCase = true) ->
+            "Your Google Drive storage is full."
+        msg.contains("No space left") || msg.contains("ENOSPC") -> "Your phone storage is full."
+        msg.contains("Not signed in") -> "Google Drive isn't connected. Connect it in Backup settings."
+        msg.contains("permission is missing", ignoreCase = true) ->
+            "Drive permission is missing. Reconnect Google Drive."
+        e is GoogleAuthException -> "Google sign-in expired. Reconnect Google Drive."
+        http == 401 || http == 403 -> "Google Drive refused access. Reconnect your account."
+        http == 429 -> "Google Drive is busy. Try again in a bit."
+        http != null && http >= 500 -> "Google Drive is having problems. Try again later."
+        msg.isBlank() -> "Something went wrong."
+        else -> msg.lineSequence().first().take(100)
+    }
+}
+
 private class BackupTaskResult(val message: String, val needsRestart: Boolean = false)
 private typealias BackupReport = (stepIndex: Int, progress: Float?) -> Unit
 
@@ -130,7 +161,7 @@ object BackupRepository {
     private const val K_PENDING = "pending_sync"
 
     /** Wait this long after the last change before syncing, so a burst of edits is one upload. */
-    private const val SYNC_DEBOUNCE_MS = 8_000L
+    private const val SYNC_DEBOUNCE_MS = 5_000L
     private const val SYNC_RETRY_MS = 120_000L
     private const val SYNC_MAX_RETRIES = 3
 
@@ -179,6 +210,57 @@ object BackupRepository {
     var driveConnecting by mutableStateOf(false)
         private set
 
+    /** Drives the top-bar backup button (animation) on every screen. */
+    var syncStatus by mutableStateOf(BackupStatus.Synced)
+        private set
+    /** Short reason shown when [syncStatus] is [BackupStatus.Failed]. */
+    var failureReason by mutableStateOf<String?>(null)
+        private set
+    private var successJob: Job? = null
+
+    private fun markSyncing() {
+        successJob?.cancel()
+        failureReason = null
+        syncStatus = BackupStatus.Syncing
+    }
+
+    private fun markSuccess() {
+        failureReason = null
+        syncStatus = BackupStatus.Success
+        successJob?.cancel()
+        successJob = scope.launch {
+            delay(2_000)
+            if (syncStatus == BackupStatus.Success) syncStatus = BackupStatus.Synced
+        }
+    }
+
+    private fun markFailed(reason: String) {
+        successJob?.cancel()
+        failureReason = reason
+        syncStatus = BackupStatus.Failed
+    }
+
+    /** "Not now" on the failure sheet: with auto-backup off there is nothing left to retry, so hide the button. */
+    fun dismissFailure() {
+        if (!prefs.autoBackup && syncStatus == BackupStatus.Failed) {
+            syncStatus = BackupStatus.Synced
+            failureReason = null
+        }
+    }
+
+    /** Tap on the top-bar button (Synced -> back up now, Failed -> try again). */
+    fun retry() {
+        val app = appContext ?: return
+        if (syncing || restorePending || task is BackupTask.Running) return
+        if (prefs.autoBackup) {
+            syncFailures = 0
+            syncJob?.cancel()
+            syncJob = scope.launch { syncNow() }
+        } else {
+            backup(app)
+        }
+    }
+
     fun init(context: Context) {
         if (store != null) return
         val sp = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -213,6 +295,10 @@ object BackupRepository {
     fun setAutoBackup(on: Boolean) {
         update { it.copy(autoBackup = on) }
         if (on) scheduleSync() // first sync right away, then after every change
+        else if (!syncing && task !is BackupTask.Running) {
+            syncStatus = BackupStatus.Synced
+            failureReason = null
+        }
     }
     fun setFrequency(f: BackupFrequency) = update { it.copy(frequency = f) }
     fun setWifiOnly(on: Boolean) = update { it.copy(wifiOnly = on) }
@@ -244,7 +330,9 @@ object BackupRepository {
     }
 
     fun cancel() {
-        if ((task as? BackupTask.Running)?.kind == BackupKind.Restore) restorePending = false
+        val running = task as? BackupTask.Running
+        if (running?.kind == BackupKind.Restore) restorePending = false
+        if (running?.kind == BackupKind.Backup) syncStatus = BackupStatus.Synced
         job?.cancel()
         task = BackupTask.Idle
     }
@@ -263,15 +351,19 @@ object BackupRepository {
         }
         job = scope.launch {
             task = BackupTask.Running(kind, target, steps, 0, null)
+            if (kind == BackupKind.Backup) markSyncing()
             try {
                 val result = block { i, p -> task = BackupTask.Running(kind, target, steps, i, p) }
                 task = BackupTask.Done(kind, result.message, result.needsRestart)
+                if (kind == BackupKind.Backup) markSuccess()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 CrashReporter.record("BackupRepository", e)
                 if (kind == BackupKind.Restore) restorePending = false // nothing was replaced
-                task = BackupTask.Failed(kind, e.message ?: "Something went wrong")
+                val reason = friendlyBackupError(e)
+                task = BackupTask.Failed(kind, reason)
+                if (kind == BackupKind.Backup) markFailed(reason)
             }
         }
     }
@@ -309,21 +401,34 @@ object BackupRepository {
             return
         }
         // Wi-Fi only: stay pending; the network callback (or next launch) picks it up.
-        if (prefs.driveConnected && prefs.wifiOnly && !onUnmeteredNetwork(app)) return
+        if (prefs.driveConnected && prefs.wifiOnly && !onUnmeteredNetwork(app)) {
+            markFailed("Waiting for Wi-Fi. Changes back up once you're connected.")
+            return
+        }
 
         syncing = true
         changedWhileSyncing = false
+        markSyncing()
+        val started = SystemClock.elapsedRealtime()
         var failed = false
         try {
             withContext(Dispatchers.IO) { silentBackup(app) }
             refreshLocalBackup(app)
             syncFailures = 0
+            // Keep the spinner visible long enough to read as an animation.
+            val rest = 700L - (SystemClock.elapsedRealtime() - started)
+            if (rest > 0) delay(rest)
+            markSuccess()
         } catch (e: CancellationException) {
+            if (syncStatus == BackupStatus.Syncing) syncStatus = BackupStatus.Synced
             throw e
         } catch (e: Exception) {
             failed = true
             store?.edit()?.putBoolean(K_PENDING, true)?.apply() // keep it queued
-            if (e !is IOException) CrashReporter.record("BackupRepository", e, "Auto sync failed")
+            markFailed(friendlyBackupError(e))
+            if (e !is IOException && e !is GoogleAuthException) {
+                CrashReporter.record("BackupRepository", e, "Auto sync failed")
+            }
         } finally {
             syncing = false
         }

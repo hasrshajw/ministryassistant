@@ -143,6 +143,7 @@ import com.harsha.myapplication.data.PersonRecord
 import com.harsha.myapplication.data.VisitLog
 import com.harsha.myapplication.data.dateFormat
 import com.harsha.myapplication.data.timeFormat
+import com.harsha.myapplication.ui.components.BackupStatusAction
 import com.harsha.myapplication.ui.components.StudyBarIconButton
 import java.util.Calendar
 import java.util.Date
@@ -304,6 +305,7 @@ fun PersonEditScreen(
                         contentDescription = "Back",
                     )
                 },
+                actions = { BackupStatusAction() },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = colors.surface,
                     scrolledContainerColor = colors.surface,

@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.harsha.myapplication.ui.components.BackupStatusAction
 import com.harsha.myapplication.*
 import com.harsha.myapplication.scripture.ScriptureReference
 import com.harsha.myapplication.scripture.localizedKey
@@ -63,6 +64,7 @@ internal fun DetectedScripturesScreen(
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         },
+                        actions = { BackupStatusAction() },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.surface),
                         scrollBehavior = scroll
                     )

@@ -64,6 +64,11 @@ fun StudyTopBar(
     windowInsets: WindowInsets = WindowInsets(0, 0, 0, 0),
 ) {
     val colors = MaterialTheme.colorScheme
+    // Every screen's bar ends with the backup status button (animates on each automatic sync).
+    val barActions: @Composable RowScope.() -> Unit = {
+        actions()
+        BackupStatusAction()
+    }
     val barColors = TopAppBarDefaults.topAppBarColors(
         containerColor = containerColor,
         scrolledContainerColor = if (containerColor == Color.Transparent) Color.Transparent else colors.surfaceContainer,
@@ -79,7 +84,7 @@ fun StudyTopBar(
             subtitle = subtitle?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             modifier = modifier,
             navigationIcon = navigationIcon,
-            actions = actions,
+            actions = barActions,
             windowInsets = windowInsets,
             colors = barColors,
             scrollBehavior = scrollBehavior,
@@ -117,7 +122,7 @@ fun StudyTopBar(
             },
             modifier = modifier,
             navigationIcon = navigationIcon,
-            actions = actions,
+            actions = barActions,
             windowInsets = windowInsets,
             colors = barColors,
             scrollBehavior = scrollBehavior,

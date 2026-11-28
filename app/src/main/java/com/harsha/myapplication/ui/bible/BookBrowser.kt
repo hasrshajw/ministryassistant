@@ -1,6 +1,7 @@
 package com.harsha.myapplication.ui.bible
 
 import androidx.compose.animation.AnimatedContent
+import com.harsha.myapplication.ui.components.BackupStatusAction
 import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -326,6 +327,7 @@ fun BookBrowserDialog(
                                 }
                             },
                             actions = {
+                                BackupStatusAction()
                                 IconButton(onClick = { requestClose() }, shapes = IconButtonDefaults.shapes()) {
                                     Icon(Icons.Default.Close, contentDescription = "Close")
                                 }
@@ -849,6 +851,7 @@ fun BibleReaderScreen() {
                             }
                         }
                     },
+                    actions = { BackupStatusAction() },
                     windowInsets = WindowInsets(0, 0, 0, 0),
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = colors.surface,
