@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import com.harsha.myapplication.ui.theme.Motion
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.DpOffset
@@ -104,8 +106,8 @@ internal fun AppSearchField(
                         AnimatedContent(
                             targetState = hints[hintIndex % hints.size],
                             transitionSpec = {
-                                (slideInVertically(tween(350)) { (it * 0.6).toInt() } + fadeIn(tween(350))) togetherWith
-                                        (slideOutVertically(tween(350)) { (-it * 0.6).toInt() } + fadeOut(tween(350)))
+                                (slideInVertically(Motion.spatialDefault<IntOffset>()) { (it * 0.6).toInt() } + fadeIn(Motion.effectsDefault)) togetherWith
+                                        (slideOutVertically(Motion.spatialDefault<IntOffset>()) { (-it * 0.6).toInt() } + fadeOut(Motion.effectsFast))
                             },
                             label = "searchHint",
                         ) { Text(it, fontFamily = Lexend) }

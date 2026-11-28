@@ -3,6 +3,8 @@
 package com.harsha.myapplication.ui.legal
 
 import androidx.compose.animation.AnimatedVisibility
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
+import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -112,7 +114,7 @@ fun PrivacyScreen(
         ) {
             // ── Privacy Hero Card ──
             Card(
-                shape = RoundedCornerShape(28.dp),
+                shape = ShapeLargeIncreased,
                 colors = CardDefaults.cardColors(
                     containerColor = colors.tertiaryContainer,
                     contentColor = colors.onTertiaryContainer
@@ -257,7 +259,7 @@ fun PrivacyScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Card(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = AppShapes.large,
                     colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
                     modifier = Modifier.fillMaxWidth()
                 ) {

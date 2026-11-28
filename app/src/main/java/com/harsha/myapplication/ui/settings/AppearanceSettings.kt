@@ -3,6 +3,9 @@
 package com.harsha.myapplication.ui.settings
 
 import android.content.res.Configuration
+import com.harsha.myapplication.ui.theme.Motion
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
+import com.harsha.myapplication.ui.theme.AppShapes
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -558,7 +561,7 @@ private fun PaletteItem(
             .width(72.dp)
             .height(PaletteItemHeight)
             .themePressScale(interaction, pressedScale = 0.95f)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppShapes.medium)
             .clickable(interactionSource = interaction, indication = ripple(), onClick = onClick)
             .semantics { contentDescription = "${palette.name} palette" },
         horizontalAlignment = Alignment.CenterHorizontally
@@ -566,9 +569,9 @@ private fun PaletteItem(
         Box(
             modifier = Modifier
                 .size(72.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(AppShapes.medium)
                 .background(if (isSelected) colors.secondaryContainer else colors.surfaceContainerHigh)
-                .border(2.dp, if (isSelected) colors.primary else Color.Transparent, RoundedCornerShape(16.dp)),
+                .border(2.dp, if (isSelected) colors.primary else Color.Transparent, AppShapes.medium),
             contentAlignment = Alignment.Center
         ) {
             PaletteSwatch(scheme, size = 44.dp) {
@@ -613,7 +616,7 @@ private fun PaletteCheck(visible: Boolean, modifier: Modifier = Modifier) {
             initialScale = 0.4f,
             animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium)
         ),
-        exit = fadeOut() + scaleOut(targetScale = 0.4f, animationSpec = tween(150))
+        exit = fadeOut() + scaleOut(targetScale = 0.4f, animationSpec = Motion.spatialFast())
     ) {
         Box(
             modifier = Modifier
@@ -647,18 +650,18 @@ private fun ThemePreviewCard(
     val previewScheme = rememberAppColorScheme(palette, useDark, pureBlack, dynamicEnabled)
 
     // Animate the whole preview when palette / mode changes so the swap feels alive.
-    val bg by animateColorAsState(previewScheme.surface, tween(300), label = "previewBg")
-    val border by animateColorAsState(previewScheme.outlineVariant, tween(300), label = "previewBorder")
-    val chip by animateColorAsState(previewScheme.surfaceContainerHigh, tween(300), label = "previewChip")
-    val primary by animateColorAsState(previewScheme.primary, tween(300), label = "previewPrimary")
-    val onPrimary by animateColorAsState(previewScheme.onPrimary, tween(300), label = "previewOnPrimary")
-    val secondary by animateColorAsState(previewScheme.secondary, tween(300), label = "previewSecondary")
-    val tertiary by animateColorAsState(previewScheme.tertiary, tween(300), label = "previewTertiary")
-    val container by animateColorAsState(previewScheme.primaryContainer, tween(300), label = "previewContainer")
+    val bg by animateColorAsState(previewScheme.surface, Motion.effectsDefault<Color>(), label = "previewBg")
+    val border by animateColorAsState(previewScheme.outlineVariant, Motion.effectsDefault<Color>(), label = "previewBorder")
+    val chip by animateColorAsState(previewScheme.surfaceContainerHigh, Motion.effectsDefault<Color>(), label = "previewChip")
+    val primary by animateColorAsState(previewScheme.primary, Motion.effectsDefault<Color>(), label = "previewPrimary")
+    val onPrimary by animateColorAsState(previewScheme.onPrimary, Motion.effectsDefault<Color>(), label = "previewOnPrimary")
+    val secondary by animateColorAsState(previewScheme.secondary, Motion.effectsDefault<Color>(), label = "previewSecondary")
+    val tertiary by animateColorAsState(previewScheme.tertiary, Motion.effectsDefault<Color>(), label = "previewTertiary")
+    val container by animateColorAsState(previewScheme.primaryContainer, Motion.effectsDefault<Color>(), label = "previewContainer")
 
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
+        shape = ShapeLargeIncreased,
         colors = CardDefaults.cardColors(containerColor = bg),
         border = BorderStroke(1.dp, border),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -676,7 +679,7 @@ private fun ThemePreviewCard(
                     Modifier
                         .width(84.dp)
                         .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppShapes.extraSmall)
                         .background(chip)
                 )
                 Spacer(Modifier.weight(1f))
@@ -692,7 +695,7 @@ private fun ThemePreviewCard(
                     Modifier
                         .weight(2f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(AppShapes.medium)
                         .background(primary)
                         .padding(12.dp)
                 ) {
@@ -715,7 +718,7 @@ private fun ThemePreviewCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(20.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(AppShapes.small)
                     .background(chip),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically

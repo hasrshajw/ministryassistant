@@ -1,6 +1,7 @@
 package com.harsha.myapplication.ui.notes
 
 import com.harsha.myapplication.telemetry.CrashReporter
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -68,7 +69,7 @@ internal fun NewFolderDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = ShapeLargeIncreased,
             color = colors.surfaceContainerHigh,
             tonalElevation = 6.dp
         ) {

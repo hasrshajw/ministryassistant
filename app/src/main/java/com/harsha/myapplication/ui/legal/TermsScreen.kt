@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.legal
 
 import androidx.compose.animation.AnimatedVisibility
+import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -118,7 +119,7 @@ fun TermsScreen(
         ) {
             // ── Document Header ──
             Card(
-                shape = RoundedCornerShape(24.dp),
+                shape = AppShapes.large,
                 colors = CardDefaults.cardColors(
                     containerColor = colors.surfaceContainerLow
                 ),

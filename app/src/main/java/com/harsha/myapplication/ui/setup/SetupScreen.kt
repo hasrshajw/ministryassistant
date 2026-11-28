@@ -12,6 +12,7 @@
 package com.harsha.myapplication.ui.setup
 
 import com.harsha.myapplication.ui.components.openAppNotificationSettings
+import com.harsha.myapplication.ui.theme.AppShapes
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -78,6 +79,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -456,7 +458,7 @@ private fun WelcomeRings(modifier: Modifier = Modifier) {
         modifier.pointerInput(Unit) {
             detectTapGestures {
                 scope.launch {
-                    bounce.animateTo(1f, tween(140, easing = FastOutSlowInEasing))
+                    bounce.animateTo(1f, Motion.spatialFast())
                     bounce.animateTo(
                         0f,
                         spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow)
@@ -664,7 +666,7 @@ private fun NotificationFeatureRow(
     title: String,
     description: String,
     enabled: Boolean,
-    shape: RoundedCornerShape,
+    shape: Shape,
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -808,7 +810,7 @@ private fun BibleSourceRow(
     source: BibleDownloads.Source,
     imported: Boolean,
     state: BibleDownloads.State?,
-    shape: RoundedCornerShape,
+    shape: Shape,
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1278,7 +1280,7 @@ private fun BigCtaButton(
             .pressScale(src, 0.97f, enabled),
         shapes = ButtonDefaults.shapes(
             shape = RoundedCornerShape(44.dp),
-            pressedShape = RoundedCornerShape(24.dp)
+            pressedShape = AppShapes.large
         ),
         contentPadding = PaddingValues(start = 32.dp, end = 14.dp)
     ) {
@@ -1745,7 +1747,7 @@ private fun PalettePreview(modifier: Modifier = Modifier) {
         val showNav = maxHeight >= 150.dp
         Surface(
             Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(32.dp),
+            shape = AppShapes.extraLarge,
             color = card,
             border = BorderStroke(1.dp, cs.outlineVariant.copy(alpha = 0.5f)),
         ) {
@@ -1789,7 +1791,7 @@ private fun PalettePreview(modifier: Modifier = Modifier) {
                         Modifier
                             .weight(1.7f)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(AppShapes.large)
                             .background(primaryContainer)
                             .padding(14.dp),
                         verticalArrangement = Arrangement.SpaceBetween

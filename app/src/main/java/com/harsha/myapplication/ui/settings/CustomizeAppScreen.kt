@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import com.harsha.myapplication.ui.theme.ShapeLargeIncreased
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -409,7 +410,7 @@ private fun AppIconItem(option: AppIconOption, selected: Boolean, onClick: () ->
         Box {
             Box(
                 Modifier
-                    .border(3.dp, ring, RoundedCornerShape(28.dp))
+                    .border(3.dp, ring, ShapeLargeIncreased)
                     .padding(5.dp)
             ) {
                 Box(

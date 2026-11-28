@@ -3,6 +3,7 @@
 package com.harsha.myapplication.ui.editor.components
 
 import com.harsha.myapplication.telemetry.CrashReporter
+import com.harsha.myapplication.ui.theme.AppShapes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -151,7 +152,7 @@ internal fun ImagePlaceholder() {
         modifier = Modifier
             .fillMaxWidth()
             .height(160.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppShapes.medium)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center
     ) {
