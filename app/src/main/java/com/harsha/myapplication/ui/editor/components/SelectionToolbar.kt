@@ -380,7 +380,7 @@ internal fun ToolbarButton(
             onCheckedChange = { onClick() },
             modifier = Modifier.size(size),
             colors = IconButtonDefaults.iconToggleButtonColors(
-                toolbarContentColor = ToolbarFg,
+                contentColor = ToolbarFg,
                 checkedContainerColor = ToolbarChecked,
                 checkedContentColor = ToolbarAccent
             ),
