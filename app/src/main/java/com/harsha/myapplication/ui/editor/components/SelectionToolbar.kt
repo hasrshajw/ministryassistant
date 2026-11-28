@@ -236,122 +236,121 @@ internal fun SelectionToolbar(
                 modifier = Modifier.wrapContentSize(),
                 colors = toolbarColors,
             ) {
-                    when {
-                        // Just a caret: the only useful actions are paste / select all.
-                        !hasSelection -> {
-                            if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
-                            if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
-                        }
+                when {
+                    // Just a caret: the only useful actions are paste / select all.
+                    !hasSelection -> {
+                        if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
+                        if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
+                    }
 
-                        // All highlight colours; everything else is hidden so the swatches get the room.
-                        mode == ToolbarMode.Colors && editing -> {
-                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", size = swatch) { state.mode = ToolbarMode.Main }
+                    // All highlight colours; everything else is hidden so the swatches get the room.
+                    mode == ToolbarMode.Colors && editing -> {
+                        ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", size = swatch) { state.mode = ToolbarMode.Main }
+                        Box(
+                            modifier = Modifier
+                                .size(swatch)
+                                .clip(CircleShape)
+                                .selectable(
+                                    selected = highlightArg == null,
+                                    role = Role.RadioButton,
+                                    onClick = { onHighlightClear(); state.hide() }
+                                )
+                                .semantics { contentDescription = "No highlight" },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(swatch - 12.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, ToolbarFg.copy(alpha = 0.6f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.FormatColorReset,
+                                    contentDescription = null,
+                                    tint = if (highlightArg == null) ToolbarAccent else ToolbarFg,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        HighlightColors.forEach { (c, label) ->
+                            val selected = highlightArg != null && highlightColorOf(highlightArg) == c
                             Box(
                                 modifier = Modifier
                                     .size(swatch)
                                     .clip(CircleShape)
                                     .selectable(
-                                        selected = highlightArg == null,
+                                        selected = selected,
                                         role = Role.RadioButton,
-                                        onClick = { onHighlightClear(); state.hide() }
+                                        onClick = { onHighlight(c); state.hide() }
                                     )
-                                    .semantics { contentDescription = "No highlight" },
+                                    .semantics { contentDescription = "$label highlight" },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(swatch - 12.dp)
                                         .clip(CircleShape)
-                                        .border(1.dp, ToolbarFg.copy(alpha = 0.6f), CircleShape),
+                                        .background(c)
+                                        .border(1.dp, ToolbarFg.copy(alpha = 0.4f), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        Icons.Default.FormatColorReset,
-                                        contentDescription = null,
-                                        tint = if (highlightArg == null) ToolbarAccent else ToolbarFg,
-                                        modifier = Modifier.size(18.dp)
+                                    if (selected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = InkBlack,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Less common actions.
+                    mode == ToolbarMode.More -> {
+                        ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state.mode = ToolbarMode.Main }
+                        if (editing) ToolbarButton(Icons.Default.FormatItalic, "Italic", selected = italicOn) { keepOpen(onItalic) }
+                        if (cut != null) ToolbarButton(Icons.Default.ContentCut, "Cut") { cut(); state.hide() }
+                        if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
+                        if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
+                        if (editing) ToolbarButton(Icons.Default.FormatClear, "Clear formatting") { onClearFormatting(); state.hide() }
+                    }
+
+                    else -> {
+                        if (editing) {
+                            // Fanned swatches like JW Library: yellow in front, the others peeking out
+                            // behind it. One tap opens the full colour row.
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 44.dp)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .clickable(role = Role.Button) { state.mode = ToolbarMode.Colors }
+                                    .semantics { contentDescription = "Highlight colours" }
+                                    .padding(start = 10.dp, end = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy((-14).dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val fan = HighlightColors.take(4)
+                                fan.forEachIndexed { i, (c, _) ->
+                                    Box(
+                                        modifier = Modifier
+                                            .zIndex((fan.size - i).toFloat()) // first colour on top
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(c)
                                     )
                                 }
                             }
-                            HighlightColors.forEach { (c, label) ->
-                                val selected = highlightArg != null && highlightColorOf(highlightArg) == c
-                                Box(
-                                    modifier = Modifier
-                                        .size(swatch)
-                                        .clip(CircleShape)
-                                        .selectable(
-                                            selected = selected,
-                                            role = Role.RadioButton,
-                                            onClick = { onHighlight(c); state.hide() }
-                                        )
-                                        .semantics { contentDescription = "$label highlight" },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(swatch - 12.dp)
-                                            .clip(CircleShape)
-                                            .background(c)
-                                            .border(1.dp, ToolbarFg.copy(alpha = 0.4f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (selected) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = InkBlack,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            ToolbarButton(Icons.Default.FormatBold, "Bold", selected = boldOn) { keepOpen(onBold) }
+                            ToolbarButton(Icons.Default.FormatUnderlined, "Underline", selected = underlineOn) { keepOpen(onUnderline) }
                         }
-
-                        // Less common actions.
-                        mode == ToolbarMode.More -> {
-                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state.mode = ToolbarMode.Main }
-                            if (editing) ToolbarButton(Icons.Default.FormatItalic, "Italic", selected = italicOn) { keepOpen(onItalic) }
-                            if (cut != null) ToolbarButton(Icons.Default.ContentCut, "Cut") { cut(); state.hide() }
-                            if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
-                            if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
-                            if (editing) ToolbarButton(Icons.Default.FormatClear, "Clear formatting") { onClearFormatting(); state.hide() }
+                        if (copy != null) ToolbarButton(Icons.Default.ContentCopy, "Copy") { copy(); state.hide() }
+                        if (onScripture != null) {
+                            ToolbarButton(Icons.AutoMirrored.Filled.MenuBook, "Read scripture") { onScripture(); state.hide() }
                         }
-
-                        else -> {
-                            if (editing) {
-                                // Fanned swatches like JW Library: yellow in front, the others peeking out
-                                // behind it. One tap opens the full colour row.
-                                Row(
-                                    modifier = Modifier
-                                        .heightIn(min = 44.dp)
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .clickable(role = Role.Button) { state.mode = ToolbarMode.Colors }
-                                        .semantics { contentDescription = "Highlight colours" }
-                                        .padding(start = 10.dp, end = 10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy((-14).dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val fan = HighlightColors.take(4)
-                                    fan.forEachIndexed { i, (c, _) ->
-                                        Box(
-                                            modifier = Modifier
-                                                .zIndex((fan.size - i).toFloat()) // first colour on top
-                                                .size(28.dp)
-                                                .clip(CircleShape)
-                                                .background(c)
-                                        )
-                                    }
-                                }
-                                ToolbarButton(Icons.Default.FormatBold, "Bold", selected = boldOn) { keepOpen(onBold) }
-                                ToolbarButton(Icons.Default.FormatUnderlined, "Underline", selected = underlineOn) { keepOpen(onUnderline) }
-                            }
-                            if (copy != null) ToolbarButton(Icons.Default.ContentCopy, "Copy") { copy(); state.hide() }
-                            if (onScripture != null) {
-                                ToolbarButton(Icons.AutoMirrored.Filled.MenuBook, "Read scripture") { onScripture(); state.hide() }
-                            }
-                            ToolbarButton(Icons.Default.MoreVert, "More") { state.mode = ToolbarMode.More }
-                        }
+                        ToolbarButton(Icons.Default.MoreVert, "More") { state.mode = ToolbarMode.More }
                     }
                 }
             }
