@@ -422,4 +422,47 @@ object GenZMessages {
         "{nickname} 👀 {name} tho follow-up pending undhi… complete cheyyi!",
     )
 
+
+    fun weeklySummary(context: Context, rvCount: Int, studyCount: Int, hours: Double): Pair<String, String> {
+        GenZPrefsRepository.init(context)
+        val prefs = GenZPrefsRepository.prefs
+        val hoursStr = if (hours == hours.toInt().toDouble()) hours.toInt().toString() else "%.1f".format(hours)
+        val items = mutableListOf<String>()
+        if (rvCount > 0) items += "$rvCount return visit${if (rvCount > 1) "s" else ""}"
+        if (studyCount > 0) items += "$studyCount stud${if (studyCount > 1) "ies" else "y"}"
+        val activity = if (items.isNotEmpty()) items.joinToString(", ") + " and " else ""
+        val plainBody = "$activity$hoursStr hours were recorded this week."
+
+        if (!prefs.enabled) {
+            return "Your Weekly Activity" to plainBody
+        }
+        val nickname = prefs.name.ifBlank { if (prefs.gender == Gender.Female) "Heyy" else "Bro" }
+        val genderKey = if (prefs.gender == Gender.Female) "Female" else "Male"
+        val pool = if (genderKey == "Female") femaleWeekly else maleWeekly
+        val template = pick(context, "${genderKey}_weekly", pool)
+        val body = template
+            .replace("{hours}", hoursStr)
+            .replace("{activity}", if (items.isNotEmpty()) items.joinToString(" & ") else "ministry time")
+            .replace("{nickname}", nickname)
+            .replace(plainBody, plainBody) // no-op; keep template primary
+        return "Week wrap 📊" to body.ifBlank { plainBody }
+    }
+
+    private val maleWeekly = arrayOf(
+        "Bro 👀 Week done! {activity} + {hours} hours — solid work 🔥",
+        "Guru 😂 {nickname}, {hours} hours this week. {activity} logged!",
+        "Bossu ⏰ Weekly recap: {activity} and {hours} hours. Rest well!",
+        "{nickname} 👊 {hours} hours + {activity} — nice week!",
+        "Anna 😌 Week summary ready: {activity}, {hours} hours total.",
+    )
+
+    private val femaleWeekly = arrayOf(
+        "Bangaram 👀 Week done! {activity} + {hours} hours — so proud 🫶",
+        "Heyy 🥹 {nickname}, {hours} hours this week. {activity} logged!",
+        "Bestie ⏰ Weekly recap: {activity} and {hours} hours. Rest well!",
+        "{nickname} 💕 {hours} hours + {activity} — beautiful week!",
+        "Chinnari 😌 Week summary ready: {activity}, {hours} hours total.",
+    )
+
+
 }

@@ -7,13 +7,16 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.harsha.myapplication.MainActivity
+import com.harsha.myapplication.data.GenZCategory
 import com.harsha.myapplication.data.GenZPrefsRepository
 import com.harsha.myapplication.data.HoursRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
 import com.harsha.myapplication.data.PersonRecord
 
 /**
- * Posts all notification types. Gen-Z mode is applied automatically when enabled.
+ * Posts all notification types. Gen-Z tone is applied only when the master switch
+ * is on AND the matching per-type flag is enabled in Gen-Z Mode settings.
+ * Male / Female pools follow [GenZPrefsRepository.prefs.gender].
  */
 object NotificationHelper {
 
@@ -22,14 +25,17 @@ object NotificationHelper {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
         HoursRepository.init(ctx)
+        GenZPrefsRepository.init(ctx)
 
         val (title, body) = if (returnsCount > 0 || studiesCount > 0) {
             val items = mutableListOf<String>()
             if (returnsCount > 0) items += "$returnsCount return visit${if (returnsCount > 1) "s" else ""}"
             if (studiesCount > 0) items += "$studiesCount stud${if (studiesCount > 1) "ies" else "y"}"
             "Good Morning" to "Today we have ${items.joinToString(" & ")}"
-        } else {
+        } else if (GenZPrefsRepository.usesGenZ(GenZCategory.DailySummary)) {
             GenZMessages.morningEmpty(ctx)
+        } else {
+            "Good Morning" to "Have a meaningful day in the ministry."
         }
 
         post(
@@ -42,17 +48,19 @@ object NotificationHelper {
         )
     }
 
-    /** Prompt to read today's daily text (settings: Daily text reminder). */
     @SuppressLint("MissingPermission")
     fun showDailyText(ctx: Context) {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
         GenZPrefsRepository.init(ctx)
-        val (title, body) = if (GenZPrefsRepository.prefs.enabled) {
-            GenZMessages.morningEmpty(ctx).let { ("Daily Text 📖", "Time for today's text — open the app and read it.") }
+
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.DailyText)) {
+            val morning = GenZMessages.morningEmpty(ctx)
+            "Daily Text 📖" to (morning.second.ifBlank { "Time for today's text — open the app and read it." })
         } else {
             "Daily text" to "A reminder to read today's text."
         }
+
         post(
             ctx,
             AppNotifications.DAILY_CHANNEL_ID,
@@ -77,7 +85,7 @@ object NotificationHelper {
 
         val name = person.name.ifBlank { "your contact" }
         val isStudy = person.type.equals("study", ignoreCase = true)
-        val (title, body) = if (GenZPrefsRepository.prefs.enabled) {
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.VisitReminder)) {
             GenZMessages.visitReminder(ctx, name, isStudy, isExact)
         } else {
             val typeText = if (isStudy) "study" else "return visit"
@@ -106,11 +114,17 @@ object NotificationHelper {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
         NotificationPrefsRepository.init(ctx)
+        GenZPrefsRepository.init(ctx)
 
         val name = person.name.ifBlank { "your contact" }
         val isStudy = person.type.equals("study", ignoreCase = true)
         val delay = NotificationPrefsRepository.prefs.visitAfterDelayMinutes
-        val (title, body) = GenZMessages.afterVisit(ctx, name, isStudy, delay)
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.AfterVisit)) {
+            GenZMessages.afterVisit(ctx, name, isStudy, delay)
+        } else {
+            val t = if (isStudy) "Update Study Details" else "Update Return Visit Details"
+            t to "Add the details from your ${if (isStudy) "study" else "return visit"}."
+        }
 
         post(
             ctx,
@@ -124,15 +138,29 @@ object NotificationHelper {
     }
 
     @SuppressLint("MissingPermission")
-    fun showOverdue(ctx: Context, person: PersonRecord? = null, notificationId: Int = AppNotifications.OVERDUE_NOTIFICATION_ID) {
+    fun showOverdue(
+        ctx: Context,
+        person: PersonRecord? = null,
+        notificationId: Int = AppNotifications.OVERDUE_NOTIFICATION_ID,
+    ) {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
         NotificationPrefsRepository.init(ctx)
+        GenZPrefsRepository.init(ctx)
 
         val name = person?.name.orEmpty()
         val isStudy = person?.type?.equals("study", ignoreCase = true) == true
         val overdueMins = NotificationPrefsRepository.prefs.visitAfterDelayMinutes.coerceAtLeast(60)
-        val (title, body) = GenZMessages.overdue(ctx, name, isStudy, overdueMins)
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.Overdue)) {
+            GenZMessages.overdue(ctx, name, isStudy, overdueMins)
+        } else {
+            val typeText = if (isStudy) "study" else "return visit"
+            "Follow-Up Pending" to if (name.isNotBlank()) {
+                "Follow up with $name for your $typeText."
+            } else {
+                "You have a return visit that still needs an update."
+            }
+        }
 
         post(
             ctx,
@@ -170,19 +198,24 @@ object NotificationHelper {
     fun showWeeklySummary(ctx: Context, rvCount: Int, studyCount: Int, hours: Double) {
         if (!AppNotifications.areEnabled(ctx)) return
         AppNotifications.ensureChannel(ctx)
+        GenZPrefsRepository.init(ctx)
 
-        val items = mutableListOf<String>()
-        if (rvCount > 0) items += "$rvCount return visit${if (rvCount > 1) "s" else ""}"
-        if (studyCount > 0) items += "$studyCount stud${if (studyCount > 1) "ies" else "y"}"
-        val hoursStr = if (hours == hours.toInt().toDouble()) hours.toInt().toString() else "%.1f".format(hours)
-        val activity = if (items.isNotEmpty()) items.joinToString(", ") + " and " else ""
-        val body = "$activity$hoursStr hours were recorded this week."
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.WeeklySummary)) {
+            GenZMessages.weeklySummary(ctx, rvCount, studyCount, hours)
+        } else {
+            val items = mutableListOf<String>()
+            if (rvCount > 0) items += "$rvCount return visit${if (rvCount > 1) "s" else ""}"
+            if (studyCount > 0) items += "$studyCount stud${if (studyCount > 1) "ies" else "y"}"
+            val hoursStr = if (hours == hours.toInt().toDouble()) hours.toInt().toString() else "%.1f".format(hours)
+            val activity = if (items.isNotEmpty()) items.joinToString(", ") + " and " else ""
+            "Your Weekly Activity" to "$activity$hoursStr hours were recorded this week."
+        }
 
         post(
             ctx,
             AppNotifications.WEEKLY_CHANNEL_ID,
             AppNotifications.WEEKLY_NOTIFICATION_ID,
-            "Your Weekly Activity",
+            title,
             body,
             route = "reports",
         )
