@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.SoundEffectOnInteraction
 
 internal val LightColorScheme = lightColorScheme(
     primary = StudyPurple,
@@ -128,6 +129,10 @@ fun MyApplicationTheme(
         motionScheme = MotionScheme.expressive(),
         shapes = AppShapes,
         typography = Typography,
-        content = content,
-    )
+    ) {
+        // Compose 1.12+/1.13 plays the system click sound on every clickable by itself. The app already
+        // plays its own click through AppFeedback (and honours the "sound effects" toggle in Customize
+        // App), so silence the automatic one to avoid a double click and keep that toggle authoritative.
+        SoundEffectOnInteraction(enabled = false, content = content)
+    }
 }
