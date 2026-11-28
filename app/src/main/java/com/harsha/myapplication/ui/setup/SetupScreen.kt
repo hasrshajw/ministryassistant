@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
+import com.harsha.myapplication.ui.components.ExpressiveSlider
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -106,7 +107,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -967,7 +967,7 @@ private fun GoalStep(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     StepperButton(Icons.Default.Remove, "Decrease goal") { onGoalChange(goal - 1) }
-                    Slider(
+                    ExpressiveSlider(
                         value = goal.toFloat().coerceIn(5f, 150f),
                         onValueChange = { onGoalChange(it.roundToInt()) },
                         valueRange = 5f..150f,
