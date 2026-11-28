@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.animateColorAsState
@@ -46,7 +47,6 @@ import androidx.compose.material.icons.filled.Stadium
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.*
@@ -203,7 +203,8 @@ fun NotesScreen(
 
     // Load the saved folders (and make sure the notes store is open). Both calls are no-ops after the first.
     val appContext = LocalContext.current
-    remember { NotesRepository.init(appContext); FolderRepository.init(appContext) }
+    // remember must not return Unit, so this returns a flag (the init calls are no-ops after the first).
+    remember(appContext) { NotesRepository.init(appContext); FolderRepository.init(appContext); true }
     val savedFolders = FolderRepository.folders
 
     // Derived data is rebuilt only when the notes change, not on every keystroke / recomposition.
@@ -257,8 +258,9 @@ fun NotesScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     // Back closes the FAB menu first.
     BackHandler(enabled = fabMenuOpen) { fabMenuOpen = false }
-    val fabExpanded by remember {
-        derivedStateOf { listState.lastScrolledBackward || !listState.canScrollBackward }
+    // Dragging the list dismisses the keyboard, so the search field never covers the notes.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) focusManager.clearFocus() }
     }
     // Folder colour per (lower-cased) name, so each note card can tint itself with its folder.
     val folderColors = remember(allFolders) {
@@ -303,6 +305,7 @@ fun NotesScreen(
     DisposableEffect(Unit) { onDispose { currentOnDrawerOpenChange(false) } }
 
     fun setDrawer(open: Boolean) {
+        if (open) fabMenuOpen = false      // never leave the FAB menu hanging over the folder menu
         drawerOpen = open
         scope.launch {
             drawerProgress.animateTo(if (open) 1f else 0f, Motion.spatialDefault)
@@ -447,12 +450,18 @@ fun NotesScreen(
                                     contentDescription = if (fabMenuOpen) "Close menu" else "Add"
                                 }
                             ) {
-                                val icon by remember {
-                                    derivedStateOf {
-                                        if (checkedProgress > 0.5f) Icons.Default.Close else Icons.Default.Add
-                                    }
+                                // "+" when closed, "×" when the menu is open (cross-fades between the two).
+                                Crossfade(
+                                    targetState = fabMenuOpen,
+                                    label = "fabIcon"
+                                ) { open ->
+                                    Icon(
+                                        imageVector = if (open) Icons.Filled.Close else Icons.Filled.Add,
+                                        contentDescription = null,
+                                        // Explicit tint: primary circle when open -> onPrimary "×" on it.
+                                        tint = if (open) colors.onPrimary else colors.onPrimaryContainer
+                                    )
                                 }
-                                Icon(icon, contentDescription = null)
                             }
                         }
                     ) {
@@ -474,217 +483,230 @@ fun NotesScreen(
                             icon = { Icon(Icons.Outlined.CreateNewFolder, contentDescription = null) },
                             text = { Text("New folder") }
                         )
-                        FloatingActionButtonMenuItem(
-                            onClick = {
-                                fabMenuOpen = false
-                                feedback.click()
-                                onImportClick()
-                            },
-                            icon = { Icon(Icons.Outlined.FileDownload, contentDescription = null) },
-                            text = { Text("Import / restore") }
-                        )
                     }
                 },
                 containerColor = colors.surface
             ) { padding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Search bar + sort button (same components as the People screen)
-                    Row(
+                Box(Modifier.fillMaxSize()) {
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .revealOnEnter(index = 0, playOnceKey = "notes-search"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .fillMaxSize()
+                            .padding(padding)
                     ) {
-                        AppSearchField(
-                            query = searchQuery,
-                            onQueryChange = onSearchQueryChange,
-                            onSearch = { focusManager.clearFocus() },
-                            hints = NotesSearchHints,
-                            modifier = Modifier.weight(1f)
-                        )
-                        SortMenuButton(
-                            options = NotesSort.entries,
-                            selected = sort,
-                            onSelect = {
-                                feedback.select()
-                                sort = it
-                            },
-                            label = { it.label },
-                            icon = { it.icon },
-                        )
-                    }
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Left: a pinned "Folders" button that opens the side menu (a navigation action,
-                    // so it is a squarer, outlined-free button with a chevron and stays put).
-                    // Right: the scrolling folder filter pills. A divider separates the two so the
-                    // button is not mistaken for another filter.
-                    // Scroll state is hoisted so the button can shrink to icon-only once the
-                    // pills are swiped away from their start position.
-                    val pillScroll = rememberScrollState()
-                    // Collapsing the button widens the pill viewport by roughly the label + chevron
-                    // width. If the pills only overflow by less than that, collapsing makes them fit
-                    // entirely, the scroll snaps back to 0, the button re-expands, and the pills
-                    // flicker with an empty gap on the right. So: only collapse when there is enough
-                    // overflow to survive the widening, and stay collapsed (latched) until the pills
-                    // are scrolled back to the start.
-                    val collapseWidthPx = with(density) { 96.dp.toPx() }
-                    var foldersCollapsed by remember { mutableStateOf(false) }
-                    LaunchedEffect(pillScroll, collapseWidthPx) {
-                        snapshotFlow { pillScroll.value to pillScroll.maxValue }
-                            .collect { (value, max) ->
-                                if (!foldersCollapsed) {
-                                    if (value > 0 && max > collapseWidthPx) foldersCollapsed = true
-                                } else if (value == 0) {
-                                    foldersCollapsed = false
-                                }
-                            }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp)
-                            .revealOnEnter(index = 1, playOnceKey = "notes-actions"),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FoldersMenuButton(
-                            collapsed = foldersCollapsed,
-                            onClick = {
-                                feedback.click()
-                                setDrawer(true)
-                            }
-                        )
-                        // Tight spacing around the divider while the button is just an icon.
-                        val dividerGap by animateDpAsState(
-                            if (foldersCollapsed) 6.dp else 12.dp,
-                            MaterialTheme.motionScheme.fastSpatialSpec(),
-                            label = "dividerGap",
-                        )
-                        Box(
-                            Modifier
-                                .padding(horizontal = dividerGap)
-                                .width(1.dp)
-                                .height(24.dp)
-                                .background(colors.outlineVariant)
-                        )
+                        // Search bar + sort button (same components as the People screen)
                         Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .horizontalScroll(pillScroll)
-                                .padding(end = 16.dp),   // last pill stops 16dp from the edge, but scrolls right up to it
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .revealOnEnter(index = 0, playOnceKey = "notes-search"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            pillEntries.forEach { entry ->
-                                NotesPill(
-                                    label = entry.label,
-                                    count = entry.count,
-                                    selected = drawerSelection == entry.key,
-                                    onClick = {
-                                        feedback.select()
-                                        drawerSelection = entry.key
-                                        entry.folder?.let(onFolderClick)
-                                    },
-                                )
+                            AppSearchField(
+                                query = searchQuery,
+                                onQueryChange = onSearchQueryChange,
+                                onSearch = { focusManager.clearFocus() },
+                                hints = NotesSearchHints,
+                                modifier = Modifier.weight(1f)
+                            )
+                            SortMenuButton(
+                                options = NotesSort.entries,
+                                selected = sort,
+                                onSelect = {
+                                    feedback.select()
+                                    sort = it
+                                },
+                                label = { it.label },
+                                icon = { it.icon },
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Left: a pinned "Folders" button that opens the side menu (a navigation action,
+                        // so it is a squarer, outlined-free button with a chevron and stays put).
+                        // Right: the scrolling folder filter pills. A divider separates the two so the
+                        // button is not mistaken for another filter.
+                        // Scroll state is hoisted so the button can shrink to icon-only once the
+                        // pills are swiped away from their start position.
+                        val pillScroll = rememberScrollState()
+                        // Collapsing the button widens the pill viewport by roughly the label + chevron
+                        // width. If the pills only overflow by less than that, collapsing makes them fit
+                        // entirely, the scroll snaps back to 0, the button re-expands, and the pills
+                        // flicker with an empty gap on the right. So: only collapse when there is enough
+                        // overflow to survive the widening, and stay collapsed (latched) until the pills
+                        // are scrolled back to the start.
+                        val collapseWidthPx = with(density) { 96.dp.toPx() }
+                        var foldersCollapsed by remember { mutableStateOf(false) }
+                        LaunchedEffect(pillScroll, collapseWidthPx) {
+                            snapshotFlow { pillScroll.value to pillScroll.maxValue }
+                                .collect { (value, max) ->
+                                    if (!foldersCollapsed) {
+                                        if (value > 0 && max > collapseWidthPx) foldersCollapsed = true
+                                    } else if (value == 0) {
+                                        foldersCollapsed = false
+                                    }
+                                }
+                        }
+                        LaunchedEffect(drawerSelection) {
+                            if (drawerSelection == "all") pillScroll.animateScrollTo(0)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp)
+                                .revealOnEnter(index = 1, playOnceKey = "notes-actions"),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FoldersMenuButton(
+                                collapsed = foldersCollapsed,
+                                onClick = {
+                                    feedback.click()
+                                    setDrawer(true)
+                                }
+                            )
+                            // Tight spacing around the divider while the button is just an icon.
+                            val dividerGap by animateDpAsState(
+                                if (foldersCollapsed) 6.dp else 12.dp,
+                                MaterialTheme.motionScheme.fastSpatialSpec(),
+                                label = "dividerGap",
+                            )
+                            Box(
+                                Modifier
+                                    .padding(horizontal = dividerGap)
+                                    .width(1.dp)
+                                    .height(24.dp)
+                                    .background(colors.outlineVariant)
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .horizontalScroll(pillScroll)
+                                    .padding(end = 16.dp),   // last pill stops 16dp from the edge, but scrolls right up to it
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                pillEntries.forEach { entry ->
+                                    NotesPill(
+                                        label = entry.label,
+                                        count = entry.count,
+                                        selected = drawerSelection == entry.key,
+                                        onClick = {
+                                            feedback.select()
+                                            drawerSelection = entry.key
+                                            entry.folder?.let(onFolderClick)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Empty state ↔ populated list: crossfade. Keying on `isEmpty()` (not on the
+                        // full list contents) means typing into the search field doesn't re-animate
+                        // the whole screen on every keystroke — only the empty↔list boundary moves.
+                        AnimatedContent(
+                            targetState = visible.isEmpty(),
+                            transitionSpec = {
+                                fadeIn(Motion.effectsDefault) togetherWith fadeOut(Motion.effectsDefault)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .weight(1f),
+                            label = "notesEmptyState"
+                        ) { isEmpty ->
+                            if (isEmpty) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Surface(
+                                            shape = MaterialShapes.Cookie9Sided.toShape(),
+                                            color = colors.primaryContainer,
+                                            modifier = Modifier.size(96.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.Note,
+                                                    contentDescription = null,
+                                                    tint = colors.onPrimaryContainer,
+                                                    modifier = Modifier.size(40.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            text = when {
+                                                searchQuery.isNotBlank() -> "No matching notes"
+                                                drawerSelection != "all" -> "No notes in this folder"
+                                                else -> "No notes yet"
+                                            },
+                                            style = typography.titleMediumEmphasized,
+                                            color = colors.onSurface
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            text = when {
+                                                searchQuery.isNotBlank() -> "Try a different word"
+                                                drawerSelection != "all" -> "Tap + to add a note to this folder"
+                                                else -> "Tap + to write your first note"
+                                            },
+                                            style = typography.bodyMedium,
+                                            color = colors.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = 96.dp),   // clears the extended FAB
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    itemsIndexed(
+                                        items = visible,
+                                        key = { _, it -> it.note.id },          // stable identity: no re-creation when the list changes
+                                        contentType = { _, _ -> "note" }
+                                    ) { index, row ->
+                                        NoteCard(
+                                            row = row,
+                                            folderColor = folderColors[row.folder.lowercase()] ?: colors.primary,
+                                            onClick = { feedback.click(); onNoteClick(row.note) },
+                                            // Cards glide to their new slot when search filters the list and
+                                            // fade in/out instead of popping. The first screenful also staggers in.
+                                            modifier = Modifier
+                                                .animateItem(
+                                                    fadeInSpec = Motion.effectsDefault,
+                                                    placementSpec = Motion.spatialDefault<IntOffset>(),
+                                                    fadeOutSpec = Motion.effectsFast,
+                                                )
+                                                // Stagger only the first screenful; later items must not animate while scrolling.
+                                                .then(
+                                                    if (index < 8) Modifier.revealOnEnter(index = index, playOnceKey = "note-$index")
+                                                    else Modifier
+                                                ),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Empty state ↔ populated list: crossfade. Keying on `isEmpty()` (not on the
-                    // full list contents) means typing into the search field doesn't re-animate
-                    // the whole screen on every keystroke — only the empty↔list boundary moves.
-                    AnimatedContent(
-                        targetState = visible.isEmpty(),
-                        transitionSpec = {
-                            fadeIn(Motion.effectsDefault) togetherWith fadeOut(Motion.effectsDefault)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .weight(1f),
-                        label = "notesEmptyState"
-                    ) { isEmpty ->
-                        if (isEmpty) {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Surface(
-                                        shape = MaterialShapes.Cookie9Sided.toShape(),
-                                        color = colors.primaryContainer,
-                                        modifier = Modifier.size(96.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.Note,
-                                                contentDescription = null,
-                                                tint = colors.onPrimaryContainer,
-                                                modifier = Modifier.size(40.dp)
-                                            )
-                                        }
-                                    }
-                                    Spacer(Modifier.height(16.dp))
-                                    Text(
-                                        text = when {
-                                            searchQuery.isNotBlank() -> "No matching notes"
-                                            drawerSelection != "all" -> "No notes in this folder"
-                                            else -> "No notes yet"
-                                        },
-                                        style = typography.titleMediumEmphasized,
-                                        color = colors.onSurface
-                                    )
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = "Tap New note to start your first study note",
-                                        style = typography.bodyMedium,
-                                        color = colors.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyColumn(
-                                state = listState,
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(bottom = 96.dp),   // clears the extended FAB
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                itemsIndexed(
-                                    items = visible,
-                                    key = { _, it -> it.note.id },          // stable identity: no re-creation when the list changes
-                                    contentType = { _, _ -> "note" }
-                                ) { index, row ->
-                                    NoteCard(
-                                        row = row,
-                                        folderColor = folderColors[row.folder.lowercase()] ?: colors.primary,
-                                        onClick = { feedback.click(); onNoteClick(row.note) },
-                                        // Cards glide to their new slot when search filters the list and
-                                        // fade in/out instead of popping. The first screenful also staggers in.
-                                        modifier = Modifier
-                                            .animateItem(
-                                                fadeInSpec = Motion.effectsDefault,
-                                                placementSpec = Motion.spatialDefault<IntOffset>(),
-                                                fadeOutSpec = Motion.effectsFast,
-                                            )
-                                            // Stagger only the first screenful; later items must not animate while scrolling.
-                                            .then(
-                                                if (index < 8) Modifier.revealOnEnter(index = index, playOnceKey = "note-$index")
-                                                else Modifier
-                                            ),
-                                    )
-                                }
-                            }
-                        }
+                    // Tap anywhere outside the open FAB menu to close it.
+                    AnimatedVisibility(
+                        visible = fabMenuOpen,
+                        enter = fadeIn(Motion.effectsDefault),
+                        exit = fadeOut(Motion.effectsFast),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(colors.scrim.copy(alpha = 0.32f))
+                                .pointerInput(Unit) { detectTapGestures { fabMenuOpen = false } }
+                        )
                     }
                 }
             }

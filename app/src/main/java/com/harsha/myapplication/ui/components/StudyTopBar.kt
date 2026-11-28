@@ -172,10 +172,12 @@ fun StudyBarIconButton(
     icon: ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     FilledTonalIconButton(
         onClick = onClick,
         modifier = modifier.padding(horizontal = 4.dp),
+        enabled = enabled,
         shapes = IconButtonDefaults.shapes(),
     ) {
         Icon(icon, contentDescription = contentDescription)

@@ -131,6 +131,7 @@ import com.harsha.myapplication.scripture.localizedKey
 import com.harsha.myapplication.ui.bible.BookBrowserDialog
 import com.harsha.myapplication.ui.bible.DetectedScripturesScreen
 import com.harsha.myapplication.ui.bible.ScriptureBottomSheet
+import com.harsha.myapplication.ui.components.StudyBarIconButton
 import com.harsha.myapplication.ui.components.StudyTopBar
 import com.harsha.myapplication.ui.editor.ScriptureBlue
 import com.harsha.myapplication.ui.editor.ScriptureBlueDark
@@ -147,8 +148,6 @@ import com.harsha.myapplication.ui.editor.components.PlacedImage
 import com.harsha.myapplication.ui.editor.components.SelectionToolbar
 import com.harsha.myapplication.ui.editor.components.SelectionToolbarState
 import com.harsha.myapplication.ui.editor.components.Tip
-import com.harsha.myapplication.ui.editor.components.TipIconButton
-import com.harsha.myapplication.ui.editor.components.TipTonalIconButton
 import com.harsha.myapplication.ui.editor.components.bottomInset
 import com.harsha.myapplication.ui.editor.highlightColorOf
 import com.harsha.myapplication.ui.editor.richtext.BOX_OFF
@@ -370,11 +369,11 @@ fun NoteEditorView(
     val formattingJson = remember(spans) { encodeSpans(spans) }
     val alignKey = remember(lineAligns) { lineAligns.joinToString("") }
     val isDirty = title != baseTitle ||
-            content != baseContent ||
-            category != baseCategory ||
-            alignKey != baseAlignKey ||
-            formattingJson != baseFormatting ||
-            usedNames != baseUsedNames
+        content != baseContent ||
+        category != baseCategory ||
+        alignKey != baseAlignKey ||
+        formattingJson != baseFormatting ||
+        usedNames != baseUsedNames
     val canSave = title.isNotBlank() || content.isNotBlank() || usedNames.isNotEmpty()
 
     var selectedReference by remember { mutableStateOf<ScriptureReference?>(null) }
@@ -646,7 +645,7 @@ fun NoteEditorView(
         if (byUser && v.selection.collapsed) {
             val pos = v.selection.start
             val oneInserted = v.text.length == old.length + 1 && pos > 0 &&
-                    v.text.removeRange(pos - 1, pos) == old
+                v.text.removeRange(pos - 1, pos) == old
 
             if (oneInserted && v.text[pos - 1] == '\n') {
                 // Enter on a list line continues the list; on an empty item it outdents / ends it
@@ -1103,75 +1102,75 @@ fun NoteEditorView(
         // Detection is a bonus feature: if it fails on some device (out of memory, a regex stack
         // overflow on a very long line, ...) the note stays fully editable, just without highlights.
         try {
-        delay(150)
-        // The caret is still inside / at the end of a chapter:verse number ("2:2" on the way to
-        // "2:20"). Wait a little longer so a half-typed number is never judged (blue / red).
-        // Typing another character restarts this effect, so the wait only ends when the user pauses.
-        if (editing) {
-            val sel = bodyValue.selection
-            val caret = if (sel.collapsed) sel.end else -1
-            if (caret in 1..content.length && content[caret - 1].isDigit()) {
-                val typingNumber = withContext(Dispatchers.Default) {
-                    ScriptureDetector.extractReferences(content)
-                        .any { it.startIndex < caret && caret <= it.endIndex }
+            delay(150)
+            // The caret is still inside / at the end of a chapter:verse number ("2:2" on the way to
+            // "2:20"). Wait a little longer so a half-typed number is never judged (blue / red).
+            // Typing another character restarts this effect, so the wait only ends when the user pauses.
+            if (editing) {
+                val sel = bodyValue.selection
+                val caret = if (sel.collapsed) sel.end else -1
+                if (caret in 1..content.length && content[caret - 1].isDigit()) {
+                    val typingNumber = withContext(Dispatchers.Default) {
+                        ScriptureDetector.extractReferences(content)
+                            .any { it.startIndex < caret && caret <= it.endIndex }
+                    }
+                    if (typingNumber) delay(700)
                 }
-                if (typingNumber) delay(700)
             }
-        }
-        val (refs, ranges, invalid) = withContext(Dispatchers.Default) {
-            val found = ScriptureDetector.extractReferences(content).toList()
-            // The detector's own references are the source of truth: each one is exactly one span, so
-            // neighbouring scriptures can never merge and fuzzy / misspelled names are covered too.
-            val fromDetector = found
-                .map { it.startIndex.coerceAtLeast(0) until it.endIndex.coerceAtMost(content.length) }
-                .filter { !it.isEmpty() }
-            // The older word-by-word finder stays as a safety net for anything the detector did not claim.
-            val fallback = findScriptureSpans(content).filter { r ->
-                fromDetector.none { it.first <= r.last && r.first <= it.last }
-            }
-            val allRanges = (fromDetector + fallback).sortedBy { it.first }
-            // Split ranges into valid / invalid against the active Bible.
-            val valid = mutableListOf<IntRange>()
-            val bad = mutableListOf<IntRange>()
-            for (range in allRanges) {
-                val overlapping = found.filter {
-                    it.startIndex < range.last + 1 && it.endIndex > range.first
+            val (refs, ranges, invalid) = withContext(Dispatchers.Default) {
+                val found = ScriptureDetector.extractReferences(content).toList()
+                // The detector's own references are the source of truth: each one is exactly one span, so
+                // neighbouring scriptures can never merge and fuzzy / misspelled names are covered too.
+                val fromDetector = found
+                    .map { it.startIndex.coerceAtLeast(0) until it.endIndex.coerceAtMost(content.length) }
+                    .filter { !it.isEmpty() }
+                // The older word-by-word finder stays as a safety net for anything the detector did not claim.
+                val fallback = findScriptureSpans(content).filter { r ->
+                    fromDetector.none { it.first <= r.last && r.first <= it.last }
                 }
-                val isBad = overlapping.isNotEmpty() && overlapping.all { !BibleData.isValidPassage(it) }
-                if (isBad) bad += range else valid += range
+                val allRanges = (fromDetector + fallback).sortedBy { it.first }
+                // Split ranges into valid / invalid against the active Bible.
+                val valid = mutableListOf<IntRange>()
+                val bad = mutableListOf<IntRange>()
+                for (range in allRanges) {
+                    val overlapping = found.filter {
+                        it.startIndex < range.last + 1 && it.endIndex > range.first
+                    }
+                    val isBad = overlapping.isNotEmpty() && overlapping.all { !BibleData.isValidPassage(it) }
+                    if (isBad) bad += range else valid += range
+                }
+                Triple(found, valid, bad)
             }
-            Triple(found, valid, bad)
-        }
-        // Play the effect only when a reference was ADDED (count went up), never while one is
-        // merely being edited, so typing "John 3:1" -> "John 3:16" does not flash twice.
-        val previousTexts = detectedReferences.map { it.rawText }.toMutableList()
-        val grew = refs.size > detectedReferences.size
-        val fresh = if (grew) {
-            ranges.filter { r ->
+            // Play the effect only when a reference was ADDED (count went up), never while one is
+            // merely being edited, so typing "John 3:1" -> "John 3:16" does not flash twice.
+            val previousTexts = detectedReferences.map { it.rawText }.toMutableList()
+            val grew = refs.size > detectedReferences.size
+            val fresh = if (grew) {
+                ranges.filter { r ->
+                    val t = content.substring(r.first, (r.last + 1).coerceAtMost(content.length))
+                    !previousTexts.remove(t)
+                }
+            } else emptyList()
+            detectedReferences = refs
+            scriptureSpans = ranges
+            invalidScriptureSpans = invalid
+            // Wrong reference (does not exist in this Bible): red + shake + reject vibration.
+            val oldInvalid = lastInvalidTexts.toMutableList()
+            val newInvalid = invalid.filter { r ->
                 val t = content.substring(r.first, (r.last + 1).coerceAtMost(content.length))
-                !previousTexts.remove(t)
+                !oldInvalid.remove(t)
             }
-        } else emptyList()
-        detectedReferences = refs
-        scriptureSpans = ranges
-        invalidScriptureSpans = invalid
-        // Wrong reference (does not exist in this Bible): red + shake + reject vibration.
-        val oldInvalid = lastInvalidTexts.toMutableList()
-        val newInvalid = invalid.filter { r ->
-            val t = content.substring(r.first, (r.last + 1).coerceAtMost(content.length))
-            !oldInvalid.remove(t)
-        }
-        lastInvalidTexts.clear()
-        invalid.mapTo(lastInvalidTexts) { content.substring(it.first, (it.last + 1).coerceAtMost(content.length)) }
-        if (editing && newInvalid.isNotEmpty()) {
-            haptic.performHapticFeedback(HapticFeedbackType.Reject)
-            detectionFx.triggerInvalid(scope, newInvalid)
-        }
-        if (grew) {
-            // Haptics only for what the user just typed, not when an existing note is opened.
-            if (editing) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-            detectionFx.trigger(scope, fresh.ifEmpty { ranges.takeLast(1) })
-        }
+            lastInvalidTexts.clear()
+            invalid.mapTo(lastInvalidTexts) { content.substring(it.first, (it.last + 1).coerceAtMost(content.length)) }
+            if (editing && newInvalid.isNotEmpty()) {
+                haptic.performHapticFeedback(HapticFeedbackType.Reject)
+                detectionFx.triggerInvalid(scope, newInvalid)
+            }
+            if (grew) {
+                // Haptics only for what the user just typed, not when an existing note is opened.
+                if (editing) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                detectionFx.trigger(scope, fresh.ifEmpty { ranges.takeLast(1) })
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -1459,9 +1458,11 @@ fun NoteEditorView(
     // View-mode still uses a simple more button; edit-mode uses SplitButton (Done + menu).
     val moreMenu: @Composable () -> Unit = {
         Box {
-            TipIconButton(label = "More", onClick = { menuOpen = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "More options")
-            }
+            StudyBarIconButton(
+                onClick = { menuOpen = true },
+                icon = Icons.Default.MoreVert,
+                contentDescription = "More options",
+            )
             DropdownMenu(
                 expanded = menuOpen,
                 onDismissRequest = { menuOpen = false },
@@ -1497,36 +1498,31 @@ fun NoteEditorView(
     ) {
         Scaffold(
             topBar = {
+                // Same shared bar as Home / People / Notes / Settings. While editing there is no
+                // title ("New" / "Edit" removed) so Back + Undo / Redo + Done get all the room.
                 StudyTopBar(
-                    title = when {
-                        !editing -> "Note"
-                        noteId == null -> "New Note"
-                        else -> "Edit Note"
-                    },
+                    title = if (editing) "" else "Note",
                     navigationIcon = {
-                        TipIconButton(label = "Back", onClick = { requestExit() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
+                        StudyBarIconButton(
+                            onClick = { requestExit() },
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                        )
                     },
                     actions = {
                         if (editing) {
-                            TipIconButton(
-                                label = "Undo",
+                            StudyBarIconButton(
                                 onClick = { undo() },
-                                enabled = undoStack.isNotEmpty()
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
-                            }
-                            TipIconButton(
-                                label = "Redo",
+                                icon = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo",
+                                enabled = undoStack.isNotEmpty(),
+                            )
+                            StudyBarIconButton(
                                 onClick = { redo() },
-                                enabled = redoStack.isNotEmpty()
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
-                            }
+                                icon = Icons.AutoMirrored.Filled.Redo,
+                                contentDescription = "Redo",
+                                enabled = redoStack.isNotEmpty(),
+                            )
                             // Primary action + secondary options as a Material 3 Expressive SplitButton.
                             // Leading = Done (save & leave edit mode). Trailing expands Share / Copy / Find / Delete.
                             Box {
@@ -1575,9 +1571,11 @@ fun NoteEditorView(
                                 }
                             }
                         } else {
-                            TipTonalIconButton(label = "Edit", onClick = { enterEditMode() }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit note")
-                            }
+                            StudyBarIconButton(
+                                onClick = { enterEditMode() },
+                                icon = Icons.Default.Edit,
+                                contentDescription = "Edit note",
+                            )
                             moreMenu()
                         }
                         Spacer(Modifier.width(8.dp))
@@ -1597,9 +1595,9 @@ fun NoteEditorView(
                 AnimatedVisibility(
                     visible = findOpen,
                     enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()) +
-                            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
                     exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()) +
-                            fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
+                        fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
                 ) {
                     FindBar(
                         query = findQuery,
@@ -1696,13 +1694,13 @@ fun NoteEditorView(
                     AnimatedVisibility(
                         visible = wordCount > 0,
                         enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()) +
-                                fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
+                            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
                         exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()) +
-                                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
+                            fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
                     ) {
                         Text(
                             text = (if (wordCount == 1) "1 word" else "$wordCount words") +
-                                    " \u00B7 " + (if (charCount == 1) "1 character" else "$charCount characters"),
+                                " \u00B7 " + (if (charCount == 1) "1 character" else "$charCount characters"),
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.onSurfaceVariant.copy(alpha = 0.8f),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
@@ -1837,9 +1835,9 @@ fun NoteEditorView(
                                             val line = layout.getLineForOffset(shownOffset)
                                             val offset = planState.value.toOriginal(shownOffset)
                                             val onText = pos.y >= layout.getLineTop(line) &&
-                                                    pos.y <= layout.getLineBottom(line) &&
-                                                    pos.x >= layout.getLineLeft(line) &&
-                                                    pos.x <= layout.getLineRight(line)
+                                                pos.y <= layout.getLineBottom(line) &&
+                                                pos.x >= layout.getLineLeft(line) &&
+                                                pos.x <= layout.getLineRight(line)
                                             if (!onText) return@awaitEachGesture
 
                                             // Tapping the box of a checklist item ticks / unticks it
@@ -1989,11 +1987,11 @@ fun NoteEditorView(
                 AnimatedVisibility(
                     visible = detectedReferences.isNotEmpty() && !imeVisible,
                     enter = expandVertically(MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()) +
-                            scaleIn(MaterialTheme.motionScheme.fastSpatialSpec<Float>(), initialScale = 0.8f) +
-                            fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
+                        scaleIn(MaterialTheme.motionScheme.fastSpatialSpec<Float>(), initialScale = 0.8f) +
+                        fadeIn(MaterialTheme.motionScheme.defaultEffectsSpec<Float>()),
                     exit = shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()) +
-                            scaleOut(MaterialTheme.motionScheme.fastSpatialSpec<Float>(), targetScale = 0.9f) +
-                            fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
+                        scaleOut(MaterialTheme.motionScheme.fastSpatialSpec<Float>(), targetScale = 0.9f) +
+                        fadeOut(MaterialTheme.motionScheme.fastEffectsSpec<Float>())
                 ) {
                     Box(
                         modifier = Modifier
@@ -2134,9 +2132,9 @@ fun NoteEditorView(
                     AnimatedVisibility(
                         visible = panel != Panel.None,
                         enter = expandVertically(Motion.spatialDefault<androidx.compose.ui.unit.IntSize>()) +
-                                fadeIn(Motion.effectsFast),
+                            fadeIn(Motion.effectsFast),
                         exit = shrinkVertically(Motion.spatialFast<androidx.compose.ui.unit.IntSize>()) +
-                                fadeOut(Motion.effectsFast)
+                            fadeOut(Motion.effectsFast)
                     ) {
                         AnimatedContent(
                             targetState = lastPanel,
@@ -2240,7 +2238,7 @@ fun NoteEditorView(
             text = {
                 Text(
                     "You have unsaved changes in this note. Save them, or discard them and leave. " +
-                            "Tap outside this box to keep editing.",
+                        "Tap outside this box to keep editing.",
                     fontFamily = Lexend
                 )
             },
