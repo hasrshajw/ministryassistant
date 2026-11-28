@@ -2,6 +2,7 @@ package com.harsha.myapplication
 
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import com.harsha.myapplication.ui.security.SecuritySettingsScreen
 import com.harsha.myapplication.ui.security.LockScreen
@@ -73,6 +74,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -131,13 +133,32 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// Lexend font family
-val Lexend = FontFamily(
+// Lexend font family.
+// API 26+: the variable font (one file, "wght" axis 100..900), so every FontWeight is a true weight
+// (SemiBold for the Emphasized styles is no longer just Bold). API 24-25 cannot apply font variation
+// settings, so they keep the three static files.
+private val LexendStatic = FontFamily(
     Font(R.font.lexend_regular, FontWeight.Normal),
     Font(R.font.lexend_medium, FontWeight.Medium),
     Font(R.font.lexend_bold, FontWeight.SemiBold),
     Font(R.font.lexend_bold, FontWeight.Bold),
 )
+
+private fun lexendVariable(): FontFamily = FontFamily(
+    listOf(
+        FontWeight.Thin, FontWeight.ExtraLight, FontWeight.Light, FontWeight.Normal, FontWeight.Medium,
+        FontWeight.SemiBold, FontWeight.Bold, FontWeight.ExtraBold, FontWeight.Black,
+    ).map { weight ->
+        Font(
+            resId = R.font.lexend_variable,
+            weight = weight,
+            variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight)),
+        )
+    }
+)
+
+val Lexend: FontFamily =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) lexendVariable() else LexendStatic
 
 // ---------- Legacy color aliases (kept for existing screens) ----------
 // Mapped onto the new green brand palette so older screens still compile.

@@ -72,3 +72,46 @@ val StudyDarkOnTertiary = Color(0xFF00363C)
 val StudyDarkTertiaryContainer = Color(0xFF1F4E55)
 val StudyDarkOnTertiaryContainer = Color(0xFFCDE8EC)
 val StudyDarkOutline = Color(0xFF8B938F)
+
+// ============================================================================
+//  Remaining Material 3 roles. Anything not set in the scheme falls back to the stock purple
+//  baseline, which clashed with the green brand in error dialogs, snackbars and elevated surfaces.
+// ============================================================================
+
+// ---- Error (standard M3 red; reads clearly against the green brand) ----
+val StudyError = Color(0xFFBA1A1A)
+val StudyOnError = Color(0xFFFFFFFF)
+val StudyErrorContainer = Color(0xFFFFDAD6)
+val StudyOnErrorContainer = Color(0xFF410002)
+val StudyDarkError = Color(0xFFFFB4AB)
+val StudyDarkOnError = Color(0xFF690005)
+val StudyDarkErrorContainer = Color(0xFF93000A)
+val StudyDarkOnErrorContainer = Color(0xFFFFDAD6)
+
+// ---- Surface dim / bright (the page itself is StudyBackground / StudyDarkBackground) ----
+val StudySurfaceDim = Color(0xFFD6DAD8)
+val StudySurfaceBright = Color(0xFFF8FAF9)
+val StudyDarkSurfaceDim = StudyDarkLowest
+val StudyDarkSurfaceBright = Color(0xFF383D3B)
+
+// ---- Inverse (snackbars, tooltips: a dark chip on light, a light chip on dark) ----
+val StudyInverseSurface = Color(0xFF2E3130)
+val StudyInverseOnSurface = Color(0xFFEFF1EF)
+val StudyInversePrimary = StudyEmerald               // action text on the dark chip
+val StudyDarkInverseSurface = StudyDarkText
+val StudyDarkInverseOnSurface = Color(0xFF2E3130)
+val StudyDarkInversePrimary = Color(0xFF0E7A45)      // action text on the light chip
+
+// ---- Fixed roles: identical in light and dark, for content that must not change with the theme ----
+val StudyPrimaryFixed = StudyGreenTint
+val StudyPrimaryFixedDim = Color(0xFFABCBB9)
+val StudyOnPrimaryFixed = StudyDeepGreen
+val StudyOnPrimaryFixedVariant = StudyGreenTrack
+val StudySecondaryFixed = Color(0xFFC2E9D3)
+val StudySecondaryFixedDim = StudyDarkSecondary
+val StudyOnSecondaryFixed = Color(0xFF002114)
+val StudyOnSecondaryFixedVariant = Color(0xFF274E3C)
+val StudyTertiaryFixed = StudyTertiaryContainer
+val StudyTertiaryFixedDim = StudyDarkTertiary
+val StudyOnTertiaryFixed = Color(0xFF001F23)
+val StudyOnTertiaryFixedVariant = StudyDarkTertiaryContainer
