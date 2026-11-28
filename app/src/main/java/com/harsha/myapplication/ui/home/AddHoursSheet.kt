@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -233,6 +234,7 @@ fun AddHoursSheet(
                             },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 8.dp),
+                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                         }
@@ -270,6 +272,7 @@ fun AddHoursSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
+                shapes = ButtonDefaults.shapes(),
             ) {
                 Text("Save", style = MaterialTheme.typography.titleMedium)
             }
@@ -298,10 +301,11 @@ fun AddHoursSheet(
                         }
                         showDatePicker = false
                     },
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                TextButton(onClick = { showDatePicker = false }, shapes = ButtonDefaults.shapes()) { Text("Cancel") }
             },
         ) {
             DatePicker(state = datePickerState, showModeToggle = false)

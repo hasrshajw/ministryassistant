@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -277,7 +280,14 @@ fun PrivacyScreen(
                             }
                             Switch(
                                 checked = crashReportingEnabled,
-                                onCheckedChange = { crashReportingEnabled = it }
+                                onCheckedChange = { crashReportingEnabled = it },
+                                thumbContent = {
+                                    Icon(
+                                        if (crashReportingEnabled) Icons.Default.Check else Icons.Default.Close,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                                    )
+                                }
                             )
                         }
 
@@ -287,7 +297,7 @@ fun PrivacyScreen(
                             onClick = {
                                 exportSuccessMessage = "All notes & records exported to Downloads folder!"
                             },
-                            shape = RoundedCornerShape(16.dp),
+                            shapes = ButtonDefaults.shapes(),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
@@ -322,7 +332,7 @@ fun PrivacyScreen(
                 border = ButtonDefaults.outlinedButtonBorder.copy(
                     brush = androidx.compose.ui.graphics.SolidColor(colors.error.copy(alpha = 0.5f))
                 ),
-                shape = RoundedCornerShape(20.dp),
+                shapes = ButtonDefaults.shapes(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
@@ -344,12 +354,12 @@ fun PrivacyScreen(
                 title = { Text("Clear All App Data?") },
                 text = { Text("This will permanently remove all local notes, ministry records, and saved preferences. This action cannot be undone.") },
                 confirmButton = {
-                    TextButton(onClick = { showDeleteDialog = false }) {
+                    TextButton(onClick = { showDeleteDialog = false }, shapes = ButtonDefaults.shapes()) {
                         Text("Delete Everything", color = colors.error)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDeleteDialog = false }) {
+                    TextButton(onClick = { showDeleteDialog = false }, shapes = ButtonDefaults.shapes()) {
                         Text("Cancel")
                     }
                 }

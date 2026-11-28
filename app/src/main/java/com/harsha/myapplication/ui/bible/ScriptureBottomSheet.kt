@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
@@ -196,7 +197,8 @@ fun ScriptureBottomSheet(
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = colors.errorContainer,
                                 contentColor = colors.onErrorContainer
-                            )
+                            ),
+                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 Icons.Default.Delete,
@@ -221,7 +223,8 @@ fun ScriptureBottomSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
-                                .pressScale(insertSrc)
+                                .pressScale(insertSrc),
+                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Icon(
                                 Icons.Default.FormatQuote,
@@ -253,7 +256,8 @@ fun ScriptureBottomSheet(
                             .fillMaxWidth()
                             .height(48.dp)
                             .pressScale(correctSrc),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
+                        shapes = ButtonDefaults.shapes(),
                     ) {
                         Icon(
                             Icons.Default.Edit,
@@ -276,7 +280,8 @@ fun ScriptureBottomSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .pressScale(closeBtnSrc)
+                        .pressScale(closeBtnSrc),
+                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Text("Close", style = MaterialTheme.typography.titleMedium)
                 }

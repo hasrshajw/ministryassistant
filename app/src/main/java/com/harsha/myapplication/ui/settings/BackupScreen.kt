@@ -60,6 +60,8 @@ import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -400,9 +402,10 @@ fun BackupScreen(onBack: () -> Unit) {
                     colors = if (destructive) {
                         ButtonDefaults.textButtonColors(contentColor = colors.error)
                     } else ButtonDefaults.textButtonColors(),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text(request.confirmLabel) }
             },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirm = null }, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
         )
     }
 }
@@ -833,7 +836,7 @@ private fun RunningContent(t: BackupTask.Running, onCancel: () -> Unit) {
                 }
             }
 
-            IconButton(onClick = onCancel) {
+            IconButton(onClick = onCancel, shapes = IconButtonDefaults.shapes()) {
                 Icon(Icons.Filled.Close, contentDescription = "Cancel")
             }
         }

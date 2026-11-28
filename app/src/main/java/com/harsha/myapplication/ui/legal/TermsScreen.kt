@@ -132,7 +132,7 @@ fun TermsScreen(
                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shapes = ButtonDefaults.shapes(),
                         color = colors.primaryContainer,
                         modifier = Modifier.size(48.dp)
                     ) {
@@ -261,7 +261,7 @@ fun TermsScreen(
             ) {
                 OutlinedButton(
                     onClick = { },
-                    shape = RoundedCornerShape(16.dp),
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
@@ -275,7 +275,7 @@ fun TermsScreen(
 
                 Button(
                     onClick = { hasAccepted = true },
-                    shape = RoundedCornerShape(16.dp),
+                    shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (hasAccepted) colors.secondaryContainer else colors.primary,
                         contentColor = if (hasAccepted) colors.onSecondaryContainer else colors.onPrimary

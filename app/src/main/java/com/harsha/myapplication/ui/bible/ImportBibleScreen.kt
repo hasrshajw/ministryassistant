@@ -62,6 +62,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -410,11 +412,12 @@ fun ImportBibleScreen(
                         }
                         pendingDelete = null
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Remove", style = typography.labelLargeEmphasized) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
+                TextButton(onClick = { pendingDelete = null }, shapes = ButtonDefaults.shapes()) {
                     Text("Cancel", style = typography.labelLarge)
                 }
             },
@@ -887,7 +890,8 @@ private fun DownloadableBibleRow(
                                 // Same "Get" button as the setup screen.
                                 DownloadPhase.Idle -> FilledTonalButton(
                                     onClick = onStart,
-                                    contentPadding = PaddingValues(horizontal = 14.dp)
+                                    contentPadding = PaddingValues(horizontal = 14.dp),
+                                    shapes = ButtonDefaults.shapes(),
                                 ) {
                                     Icon(
                                         Icons.Default.Download,
@@ -921,7 +925,8 @@ private fun DownloadableBibleRow(
 
                                 DownloadPhase.Failed -> FilledTonalButton(
                                     onClick = onStart,
-                                    contentPadding = PaddingValues(horizontal = 14.dp)
+                                    contentPadding = PaddingValues(horizontal = 14.dp),
+                                    shapes = ButtonDefaults.shapes(),
                                 ) {
                                     Text("Retry")
                                 }

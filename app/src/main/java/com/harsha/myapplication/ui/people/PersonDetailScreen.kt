@@ -53,6 +53,8 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -384,7 +386,7 @@ private fun ProfileMenu(
             onDismissRequest = { open = false },
             modifier = Modifier.widthIn(min = 230.dp),
             offset = DpOffset(0.dp, 8.dp),
-            shape = MaterialTheme.shapes.large,
+            shapes = ButtonDefaults.shapes(),
             containerColor = colors.surfaceContainerLow,
             tonalElevation = 0.dp,
             shadowElevation = 8.dp,
@@ -1088,7 +1090,7 @@ private fun VisitLogCard(
             ) {
                 Column(Modifier.padding(top = 12.dp)) {
                     Surface(
-                        shape = MaterialTheme.shapes.large,
+                        shapes = ButtonDefaults.shapes(),
                         color = colors.surfaceContainerHigh,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -1121,7 +1123,7 @@ private fun VisitLogCard(
                         Modifier.fillMaxWidth().padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     ) {
-                        FilledTonalButton(onClick = onEdit) {
+                        FilledTonalButton(onClick = onEdit, shapes = ButtonDefaults.shapes()) {
                             Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Edit")
@@ -1132,6 +1134,7 @@ private fun VisitLogCard(
                                 containerColor = colors.errorContainer,
                                 contentColor = colors.onErrorContainer,
                             ),
+                            shapes = ButtonDefaults.shapes(),
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
@@ -1287,7 +1290,7 @@ private fun LogVisitForm(
                 onSave(LogDraft(topic.trim(), question, notes.trim(), date, time))
             },
             enabled = date.isNotEmpty() && time.isNotEmpty(),
-            shape = MaterialTheme.shapes.large,
+            shapes = ButtonDefaults.shapes(),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -1389,7 +1392,7 @@ private fun CompactNoteField(
     )
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
+        shapes = ButtonDefaults.shapes(),
         color = container,
         border = BorderStroke(2.dp, ring),
     ) {
@@ -1430,7 +1433,7 @@ private fun CompactNoteField(
                     enter = scaleIn(Motion.spatialFast) + fadeIn(effects()),
                     exit = scaleOut(Motion.spatialFast) + fadeOut(effects()),
                 ) {
-                    IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(30.dp)) {
+                    IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(30.dp), shapes = IconButtonDefaults.shapes()) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "Clear $label",
@@ -1483,7 +1486,7 @@ private fun PickerCard(
     Surface(
         onClick = { clearFocus(); onClick() },
         modifier = modifier.pressScale(source, pressedScale = 0.95f),
-        shape = MaterialTheme.shapes.large,
+        shapes = ButtonDefaults.shapes(),
         color = colors.surfaceContainer,
         border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f)),
         interactionSource = source,
@@ -1535,9 +1538,10 @@ private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
             TextButton(
                 enabled = state.selectedDateMillis != null,
                 onClick = { state.selectedDateMillis?.let { onConfirm(utc.format(Date(it))) } },
+                shapes = ButtonDefaults.shapes(),
             ) { Text("OK") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
     ) {
         DatePicker(state = state)
     }
@@ -1571,9 +1575,10 @@ private fun TimePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
                     set(Calendar.MINUTE, state.minute)
                 }
                 onConfirm(fmt.format(cal.time))
-            }) { Text("OK") }
+            },
+                shapes = ButtonDefaults.shapes()) { Text("OK") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
     )
 }
 
@@ -1633,12 +1638,13 @@ private fun ConfirmDialog(
                         containerColor = colors.error,
                         contentColor = colors.onError,
                     ),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text(confirmLabel) }
             } else {
-                Button(onClick = onConfirm) { Text(confirmLabel) }
+                Button(onClick = onConfirm, shapes = ButtonDefaults.shapes()) { Text(confirmLabel) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
         shape = MaterialTheme.shapes.extraLargeIncreased,
         containerColor = colors.surfaceContainerHigh,
     )
@@ -1674,7 +1680,7 @@ private fun AddressSheet(address: String, onDismiss: () -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
             Surface(
-                shape = MaterialTheme.shapes.large,
+                shapes = ButtonDefaults.shapes(),
                 color = colors.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -1695,6 +1701,7 @@ private fun AddressSheet(address: String, onDismiss: () -> Unit) {
                         onDismiss()
                     },
                     modifier = Modifier.weight(1f).height(52.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -1710,6 +1717,7 @@ private fun AddressSheet(address: String, onDismiss: () -> Unit) {
                         )
                     },
                     modifier = Modifier.weight(1f).height(52.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

@@ -38,6 +38,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -317,13 +319,13 @@ fun BookBrowserDialog(
                             },
                             navigationIcon = {
                                 if (level == Level.Picker) {
-                                    IconButton(onClick = { goBack() }) {
+                                    IconButton(onClick = { goBack() }, shapes = IconButtonDefaults.shapes()) {
                                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to books")
                                     }
                                 }
                             },
                             actions = {
-                                IconButton(onClick = { requestClose() }) {
+                                IconButton(onClick = { requestClose() }, shapes = IconButtonDefaults.shapes()) {
                                     Icon(Icons.Default.Close, contentDescription = "Close")
                                 }
                             },
@@ -768,7 +770,7 @@ private fun SelectionBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (count > 0) {
-                TextButton(onClick = onClear) {
+                TextButton(onClick = onClear, shapes = ButtonDefaults.shapes()) {
                     Text("Clear", fontFamily = Lexend)
                 }
             }
@@ -777,7 +779,8 @@ private fun SelectionBar(
                 enabled = count > 0,
                 modifier = Modifier
                     .weight(1f)
-                    .height(52.dp)
+                    .height(52.dp),
+                shapes = ButtonDefaults.shapes(),
             ) {
                 Text(
                     text = if (count > 0) "Add ($count)" else "Add",
@@ -840,7 +843,7 @@ fun BibleReaderScreen() {
                     },
                     navigationIcon = {
                         if (level == Level.Picker) {
-                            IconButton(onClick = { level = Level.Books }) {
+                            IconButton(onClick = { level = Level.Books }, shapes = IconButtonDefaults.shapes()) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to books")
                             }
                         }

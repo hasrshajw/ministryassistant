@@ -51,6 +51,7 @@ import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -449,6 +450,7 @@ private fun AllowButton(onClick: () -> Unit, container: Color = MaterialTheme.co
         modifier = Modifier
             .height(36.dp)
             .pressScale(source, pressedScale = 0.95f),
+        shapes = ButtonDefaults.shapes(),
     ) { Text("Allow", style = MaterialTheme.typography.labelLargeEmphasized) }
 }
 
@@ -630,10 +632,12 @@ private fun BatteryRow(
                                 modifier = Modifier
                                     .height(36.dp)
                                     .pressScale(btnSource, pressedScale = 0.95f),
+                                shapes = ButtonDefaults.shapes(),
                             ) { Text("Open settings", style = typography.labelLargeEmphasized) }
                             TextButton(
                                 onClick = onAppSettings,
                                 colors = ButtonDefaults.textButtonColors(contentColor = colors.onTertiaryContainer),
+                                shapes = ButtonDefaults.shapes(),
                             ) { Text("App settings", style = typography.labelLargeEmphasized) }
                         }
                     }

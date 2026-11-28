@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -951,7 +952,7 @@ private fun PinnedCard(
             color = colors.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
-        FilledTonalButton(onClick = onClick) {
+        FilledTonalButton(onClick = onClick, shapes = ButtonDefaults.shapes()) {
             Text(buttonLabel, style = MaterialTheme.typography.labelLargeEmphasized)
         }
     }

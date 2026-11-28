@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DockedSearchBar
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,7 +93,7 @@ internal fun AppSearchField(
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (!isEmpty) {
-                        IconButton(onClick = { onQueryChange("") }) {
+                        IconButton(onClick = { onQueryChange("") }, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Default.Clear, contentDescription = "Clear search")
                         }
                     }
@@ -132,7 +134,7 @@ internal fun <T> SortMenuButton(
     val colors = MaterialTheme.colorScheme
 
     Box(modifier) {
-        FilledTonalIconButton(onClick = { open = true }, modifier = Modifier.size(52.dp)) {
+        FilledTonalIconButton(onClick = { open = true }, modifier = Modifier.size(52.dp), shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
         }
         DropdownMenu(
