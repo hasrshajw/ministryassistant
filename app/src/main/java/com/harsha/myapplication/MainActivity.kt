@@ -100,6 +100,7 @@ import com.harsha.myapplication.ui.settings.NotificationSettingsScreen
 import com.harsha.myapplication.ui.settings.BackupScreen
 import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
+import com.harsha.myapplication.notifications.ExactAlarmPrompt
 import com.harsha.myapplication.notifications.NotificationNav
 import com.harsha.myapplication.notifications.ReminderScheduler
 import com.harsha.myapplication.data.HomeLayoutRepository
@@ -264,6 +265,8 @@ class MainActivity : FragmentActivity() {
                                 MainAppScaffold()
                             }
                         }
+                        // Android 12+: asks (at most weekly) for "Alarms & reminders" so visit reminders are exact.
+                        ExactAlarmPrompt()
                     }
                 }
                 } // SaveableStateProvider

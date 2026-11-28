@@ -25,6 +25,9 @@ object AppNotifications {
     const val OVERDUE_CHANNEL_ID = "overdue_reminders_v2"
     const val WEEKLY_CHANNEL_ID = "weekly_summary_v2"
 
+    /** Must match com.google.firebase.messaging.default_notification_channel_id in the manifest. */
+    const val FCM_CHANNEL_ID = "fcm_default"
+
     const val DAILY_NOTIFICATION_ID = 1001
     const val UPDATE_NOTIFICATION_ID = 1002
     const val OVERDUE_NOTIFICATION_ID = 1003
@@ -33,6 +36,19 @@ object AppNotifications {
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        try {
+            createChannels(nm)
+        } catch (e: Exception) {
+            // A channel problem must never stop the reminder that is about to be posted.
+            CrashReporter.record("AppNotifications", e, "Could not create notification channels")
+        }
+    }
+
+    private fun createChannels(nm: NotificationManager) {
+        // Created up front so a push that arrives while the app is closed uses it instead of "Miscellaneous".
+        nm.createNotificationChannel(
+            NotificationChannel(FCM_CHANNEL_ID, "Push notifications", NotificationManager.IMPORTANCE_DEFAULT),
+        )
 
         // Keep the original channel for backward compatibility.
         nm.createNotificationChannel(

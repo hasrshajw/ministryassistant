@@ -12,6 +12,8 @@ import com.harsha.myapplication.data.GenZPrefsRepository
 import com.harsha.myapplication.data.HoursRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
 import com.harsha.myapplication.data.PersonRecord
+import com.harsha.myapplication.telemetry.CrashReporter
+import java.util.Calendar
 
 /**
  * Posts all notification types. Gen-Z tone is applied only when the master switch
@@ -27,15 +29,17 @@ object NotificationHelper {
         HoursRepository.init(ctx)
         GenZPrefsRepository.init(ctx)
 
+        // Matches the hour it is actually shown at (the summary time is user-chosen, not always morning).
+        val greeting = ReminderLogic.greeting(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
         val (title, body) = if (returnsCount > 0 || studiesCount > 0) {
             val items = mutableListOf<String>()
             if (returnsCount > 0) items += "$returnsCount return visit${if (returnsCount > 1) "s" else ""}"
             if (studiesCount > 0) items += "$studiesCount stud${if (studiesCount > 1) "ies" else "y"}"
-            "Good Morning" to "Today we have ${items.joinToString(" & ")}"
+            greeting to "Today we have ${items.joinToString(" & ")}"
         } else if (GenZPrefsRepository.usesGenZ(GenZCategory.DailySummary)) {
-            GenZMessages.morningEmpty(ctx)
+            copyOrElse(greeting to "Have a meaningful day in the ministry.") { GenZMessages.morningEmpty(ctx) }
         } else {
-            "Good Morning" to "Have a meaningful day in the ministry."
+            greeting to "Have a meaningful day in the ministry."
         }
 
         post(
@@ -55,7 +59,7 @@ object NotificationHelper {
         GenZPrefsRepository.init(ctx)
 
         val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.DailyText)) {
-            val morning = GenZMessages.morningEmpty(ctx)
+            val morning = copyOrElse("" to "") { GenZMessages.morningEmpty(ctx) }
             "Daily Text 📖" to (morning.second.ifBlank { "Time for today's text — open the app and read it." })
         } else {
             "Daily text" to "A reminder to read today's text."
@@ -85,16 +89,17 @@ object NotificationHelper {
 
         val name = person.name.ifBlank { "your contact" }
         val isStudy = person.type.equals("study", ignoreCase = true)
-        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.VisitReminder)) {
-            GenZMessages.visitReminder(ctx, name, isStudy, isExact)
+        val typeText = if (isStudy) "study" else "return visit"
+        val plain = if (isExact) {
+            (if (isStudy) "Study" else "Return Visit") to "Your $typeText with $name is now."
         } else {
-            val typeText = if (isStudy) "study" else "return visit"
-            if (isExact) {
-                (if (isStudy) "Study" else "Return Visit") to "Your $typeText with $name is now."
-            } else {
-                "Upcoming ${if (isStudy) "Study" else "Return Visit"}" to
-                    "Your $typeText with $name is coming up."
-            }
+            "Upcoming ${if (isStudy) "Study" else "Return Visit"}" to
+                "Your $typeText with $name is coming up."
+        }
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.VisitReminder)) {
+            copyOrElse(plain) { GenZMessages.visitReminder(ctx, name, isStudy, isExact) }
+        } else {
+            plain
         }
 
         post(
@@ -119,11 +124,12 @@ object NotificationHelper {
         val name = person.name.ifBlank { "your contact" }
         val isStudy = person.type.equals("study", ignoreCase = true)
         val delay = NotificationPrefsRepository.prefs.visitAfterDelayMinutes
+        val plain = (if (isStudy) "Update Study Details" else "Update Return Visit Details") to
+            "Add the details from your ${if (isStudy) "study" else "return visit"}."
         val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.AfterVisit)) {
-            GenZMessages.afterVisit(ctx, name, isStudy, delay)
+            copyOrElse(plain) { GenZMessages.afterVisit(ctx, name, isStudy, delay) }
         } else {
-            val t = if (isStudy) "Update Study Details" else "Update Return Visit Details"
-            t to "Add the details from your ${if (isStudy) "study" else "return visit"}."
+            plain
         }
 
         post(
@@ -151,15 +157,16 @@ object NotificationHelper {
         val name = person?.name.orEmpty()
         val isStudy = person?.type?.equals("study", ignoreCase = true) == true
         val overdueMins = NotificationPrefsRepository.prefs.visitAfterDelayMinutes.coerceAtLeast(60)
-        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.Overdue)) {
-            GenZMessages.overdue(ctx, name, isStudy, overdueMins)
+        val typeText = if (isStudy) "study" else "return visit"
+        val plain = "Follow-Up Pending" to if (name.isNotBlank()) {
+            "Follow up with $name for your $typeText."
         } else {
-            val typeText = if (isStudy) "study" else "return visit"
-            "Follow-Up Pending" to if (name.isNotBlank()) {
-                "Follow up with $name for your $typeText."
-            } else {
-                "You have a return visit that still needs an update."
-            }
+            "You have a return visit that still needs an update."
+        }
+        val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.Overdue)) {
+            copyOrElse(plain) { GenZMessages.overdue(ctx, name, isStudy, overdueMins) }
+        } else {
+            plain
         }
 
         post(
@@ -200,15 +207,16 @@ object NotificationHelper {
         AppNotifications.ensureChannel(ctx)
         GenZPrefsRepository.init(ctx)
 
+        val items = mutableListOf<String>()
+        if (rvCount > 0) items += "$rvCount return visit${if (rvCount > 1) "s" else ""}"
+        if (studyCount > 0) items += "$studyCount stud${if (studyCount > 1) "ies" else "y"}"
+        val hoursStr = if (hours == hours.toInt().toDouble()) hours.toInt().toString() else "%.1f".format(hours)
+        val activity = if (items.isNotEmpty()) items.joinToString(", ") + " and " else ""
+        val plain = "Your Weekly Activity" to "$activity$hoursStr hours were recorded this week."
         val (title, body) = if (GenZPrefsRepository.usesGenZ(GenZCategory.WeeklySummary)) {
-            GenZMessages.weeklySummary(ctx, rvCount, studyCount, hours)
+            copyOrElse(plain) { GenZMessages.weeklySummary(ctx, rvCount, studyCount, hours) }
         } else {
-            val items = mutableListOf<String>()
-            if (rvCount > 0) items += "$rvCount return visit${if (rvCount > 1) "s" else ""}"
-            if (studyCount > 0) items += "$studyCount stud${if (studyCount > 1) "ies" else "y"}"
-            val hoursStr = if (hours == hours.toInt().toDouble()) hours.toInt().toString() else "%.1f".format(hours)
-            val activity = if (items.isNotEmpty()) items.joinToString(", ") + " and " else ""
-            "Your Weekly Activity" to "$activity$hoursStr hours were recorded this week."
+            plain
         }
 
         post(
@@ -238,9 +246,9 @@ object NotificationHelper {
     fun cancelPerson(ctx: Context, recordId: String) {
         if (recordId.isEmpty()) return
         val nm = NotificationManagerCompat.from(ctx)
-        val hash = recordId.hashCode()
-        listOf(hash, hash + 1000, hash + 2000, hash + 5000).forEach {
-            runCatching { nm.cancel(it and 0x7FFFFFFF) }
+        // Same ids as showVisitReminder / showAfterVisit / showOverdue post with (see ReminderScheduler.requestCode).
+        for (kind in 0..3) {
+            runCatching { nm.cancel(ReminderScheduler.requestCode(recordId, kind)) }
         }
     }
 
@@ -280,7 +288,19 @@ object NotificationHelper {
         try {
             NotificationManagerCompat.from(ctx).notify(id, n)
         } catch (e: SecurityException) {
-            e.printStackTrace()
+            // POST_NOTIFICATIONS revoked between the check and the post: the user's choice, nothing to retry.
+            CrashReporter.record("NotificationHelper", e, "Notification permission missing")
+        } catch (e: Exception) {
+            CrashReporter.record("NotificationHelper", e, "notify() failed")
         }
     }
+
+    /** Gen-Z copy is a nicety. If building it fails for any reason, the plain message is shown instead. */
+    private inline fun copyOrElse(fallback: Pair<String, String>, build: () -> Pair<String, String>): Pair<String, String> =
+        try {
+            build()
+        } catch (e: Exception) {
+            CrashReporter.record("NotificationHelper", e, "Gen-Z message failed, using plain text")
+            fallback
+        }
 }

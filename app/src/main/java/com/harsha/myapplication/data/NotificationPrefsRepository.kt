@@ -83,10 +83,14 @@ object NotificationPrefsRepository {
     /** Called after every change with the new value. */
     var onChanged: ((NotificationPrefs) -> Unit)? = null
 
+    /**
+     * Synchronized: alarms, the boot receiver and the UI can all start this on different threads in a fresh process.
+     * [store] is assigned last, so no caller can ever see "initialised" while [prefs] still holds the defaults.
+     */
+    @Synchronized
     fun init(context: Context) {
         if (store != null) return
         val sp = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-        store = sp
         val d = NotificationPrefs()
         prefs = NotificationPrefs(
             masterEnabled = sp.getBoolean(K_MASTER, d.masterEnabled),
@@ -102,6 +106,7 @@ object NotificationPrefsRepository {
             weeklyDay = sp.getInt(K_WS_DAY, d.weeklyDay).coerceIn(Calendar.SUNDAY, Calendar.SATURDAY),
             weeklyMinutes = sp.getInt(K_WS_AT, d.weeklyMinutes).coerceIn(0, 1439),
         )
+        store = sp
     }
 
     fun update(transform: (NotificationPrefs) -> NotificationPrefs) {

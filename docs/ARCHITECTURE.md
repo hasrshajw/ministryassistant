@@ -16,7 +16,7 @@ Single-module Android app, package root `com.harsha.myapplication`, organised
 |---------|----------------|
 | `data` | Repositories (`NotesRepository`, `FolderRepository`, `PeopleRepository`, `SetupRepository`), models (`NoteItem`, `PersonRecord`, `VisitLog`…), note image storage |
 | `scripture` | Pure-ish domain logic: `ScriptureDetector`, `BookMatcher`, `PhoneticFold`, `BibleData`, `JwpubImporter`, `ScriptureReference` |
-| `notifications` | `AppNotifications` – channel creation and permission state |
+| `notifications` | Reminder alarms, boot re-registration, notification posting, channels and permission state — see [`NOTIFICATIONS.md`](NOTIFICATIONS.md) |
 | `ui.theme` | Colour, typography, shapes, motion tokens, `AppearanceRepository` |
 | `ui.components` | Reusable composables used by 2+ features |
 | `ui.editor.richtext` | Editor engine, no UI: spans (`FormatSpan`, `FmtType`), list markers, per-line alignment, span/JSON codec, styled-text builder, inline-image layout |

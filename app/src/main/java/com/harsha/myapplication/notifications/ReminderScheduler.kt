@@ -20,6 +20,14 @@ import java.util.Date
 /**
  * Schedules OS alarms for visit exact/before/after/overdue, daily morning,
  * daily text, and weekly summary. [BootReceiver] re-registers after reboot.
+ *
+ * How it stays reliable:
+ *  - Alarms live in the system AlarmManager (setAlarmClock), so they fire with the app closed, in Doze and in
+ *    battery saver. When "Alarms & reminders" is not allowed the fallback is an inexact Doze-safe alarm.
+ *  - A recurring alarm re-arms itself FIRST when it fires, before anything that could fail.
+ *  - A watchdog alarm re-syncs everything every few hours (and catches up anything that was missed).
+ *  - Every alarm remembers the visit time it was made for, so a leftover alarm for a visit that has since moved
+ *    is ignored instead of notifying at the wrong time.
  */
 object ReminderScheduler {
     const val ACTION_REMINDER = "com.harsha.myapplication.ACTION_VISIT_REMINDER"
@@ -29,6 +37,11 @@ object ReminderScheduler {
     const val EXTRA_VISIT_TIME = "visit_time"
     const val EXTRA_SCHEDULED_DATE = "scheduled_date"
 
+    const val TYPE_DAILY = "daily"
+    const val TYPE_DAILY_TEXT = "daily_text"
+    const val TYPE_WEEKLY = "weekly"
+    const val TYPE_HEARTBEAT = "heartbeat"
+
     private const val DEFAULT_TIME = "9:00 AM"
     private const val CATCH_UP_WINDOW_MS = DAY_MS
     private const val STATE_PREFS = "reminder_state"
@@ -36,7 +49,17 @@ object ReminderScheduler {
     private const val RC_DAILY = 100
     private const val RC_DAILY_TEXT = 101
     private const val RC_WEEKLY = 102
+    private const val RC_HEARTBEAT = 103
 
+    private val SYSTEM_ALARMS = listOf(
+        TYPE_DAILY to RC_DAILY,
+        TYPE_DAILY_TEXT to RC_DAILY_TEXT,
+        TYPE_WEEKLY to RC_WEEKLY,
+        TYPE_HEARTBEAT to RC_HEARTBEAT,
+    )
+
+    /** Re-registers every alarm. Safe to call any number of times, from any thread. */
+    @Synchronized
     fun rescheduleAll(ctx: Context, catchUpMissed: Boolean = false) {
         val app = ctx.applicationContext
         NotificationPrefsRepository.init(app)
@@ -49,14 +72,41 @@ object ReminderScheduler {
             return
         }
 
-        scheduleDaily(app)
-        scheduleDailyText(app)
-        scheduleWeekly(app)
-        people.forEach { schedule(app, it) }
-        if (catchUpMissed) catchUp(app)
+        // Each step is isolated: one bad record or one failing alarm must never stop the rest.
+        CrashReporter.attempt("ReminderScheduler") { scheduleDaily(app) }
+        CrashReporter.attempt("ReminderScheduler") { scheduleDailyText(app) }
+        CrashReporter.attempt("ReminderScheduler") { scheduleWeekly(app) }
+        CrashReporter.attempt("ReminderScheduler") { scheduleHeartbeat(app) }
+        people.forEach { p ->
+            CrashReporter.attempt("ReminderScheduler") { schedule(app, p, markPastAsHandled = false) }
+        }
+        if (catchUpMissed) CrashReporter.attempt("ReminderScheduler") { catchUp(app) }
     }
 
-    fun schedule(ctx: Context, p: PersonRecord) {
+    /**
+     * Called by a recurring system alarm as the very first thing it does, so the next occurrence is already
+     * registered even if showing today's notification fails.
+     */
+    @Synchronized
+    fun rearmSystem(ctx: Context, type: String) {
+        val app = ctx.applicationContext
+        NotificationPrefsRepository.init(app)
+        if (!NotificationPrefsRepository.prefs.masterEnabled) return
+        val lead = ReminderLogic.REARM_MIN_LEAD_MS
+        when (type) {
+            TYPE_DAILY -> scheduleDaily(app, lead)
+            TYPE_DAILY_TEXT -> scheduleDailyText(app, lead)
+            TYPE_WEEKLY -> scheduleWeekly(app, lead)
+            TYPE_HEARTBEAT -> scheduleHeartbeat(app)
+        }
+    }
+
+    /**
+     * (Re)registers the alarms for one person. [markPastAsHandled] is true when the user just saved the record:
+     * a visit time that is already in the past is then not "missed", the user is looking at it right now.
+     */
+    @Synchronized
+    fun schedule(ctx: Context, p: PersonRecord, markPastAsHandled: Boolean = true) {
         val app = ctx.applicationContext
         NotificationPrefsRepository.init(app)
         cancelAllForPerson(app, p.id)
@@ -70,6 +120,8 @@ object ReminderScheduler {
 
         if (at > now) {
             schedulePersonAlarm(app, p, at, isExact = true, kind = 0)
+        } else if (markPastAsHandled && !wasFired(app, p.id, at)) {
+            markFired(app, p.id, at)
         }
         if (prefs.visitBeforeActive) {
             val before = at - prefs.visitBeforeLeadMinutes * 60_000L
@@ -88,7 +140,12 @@ object ReminderScheduler {
         }
     }
 
-    fun cancel(ctx: Context, personId: String) = cancelAllForPerson(ctx.applicationContext, personId)
+    /** The person is gone: cancel their alarms and take down any of their notifications still on screen. */
+    fun cancel(ctx: Context, personId: String) {
+        val app = ctx.applicationContext
+        cancelAllForPerson(app, personId)
+        NotificationHelper.cancelPerson(app, personId)
+    }
 
     fun clearState(ctx: Context, personId: String) {
         ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
@@ -96,8 +153,9 @@ object ReminderScheduler {
     }
 
     fun markFired(ctx: Context, personId: String, at: Long) {
+        // commit(), not apply(): a receiver can be killed right after it finishes.
         ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
-            .edit().putLong("fired:$personId", at).apply()
+            .edit().putLong("fired:$personId", at).commit()
     }
 
     fun wasFired(ctx: Context, personId: String, at: Long): Boolean =
@@ -106,11 +164,11 @@ object ReminderScheduler {
 
     fun triggerAtMillis(p: PersonRecord): Long? {
         if (p.id.isBlank() || p.nextVisitDate.isBlank()) return null
-        if (p.type == "inactive") return null
+        if (p.type.equals("inactive", ignoreCase = true)) return null
         return try {
             val day = dateFormat().parse(p.nextVisitDate.trim()) ?: return null
             val timeText = p.nextVisitTime.orEmpty()
-                .replace('\u202f', ' ').replace('\u00a0', ' ').trim()
+                .replace(' ', ' ').replace(' ', ' ').trim()
                 .ifEmpty { DEFAULT_TIME }
             val time = CrashReporter.attempt("ReminderScheduler") { timeFormat().parse(timeText) }.getOrNull()
                 ?: timeFormat().parse(DEFAULT_TIME)!!
@@ -128,56 +186,64 @@ object ReminderScheduler {
         }
     }
 
-    private fun scheduleDaily(ctx: Context) {
+    fun requestCode(personId: String, kind: Int): Int = ReminderLogic.requestCode(personId, kind)
+
+    // ── recurring system alarms ─────────────────────────────────────────────────────────────
+
+    private fun scheduleDaily(ctx: Context, minLeadMs: Long = 0L) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.dailySummaryActive) { cancelRequest(ctx, RC_DAILY, "daily"); return }
-        setAlarm(ctx, nextTimeOfDay(prefs.dailySummaryMinutes).timeInMillis, systemPi(ctx, "daily", RC_DAILY))
+        if (!prefs.dailySummaryActive) { cancelRequest(ctx, RC_DAILY, TYPE_DAILY); return }
+        val at = ReminderLogic.nextDaily(System.currentTimeMillis(), prefs.dailySummaryMinutes, minLeadMs)
+        setAlarm(ctx, at, systemPi(ctx, TYPE_DAILY, RC_DAILY))
     }
 
-    private fun scheduleDailyText(ctx: Context) {
+    private fun scheduleDailyText(ctx: Context, minLeadMs: Long = 0L) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.dailyTextActive) { cancelRequest(ctx, RC_DAILY_TEXT, "daily_text"); return }
-        setAlarm(ctx, nextTimeOfDay(prefs.dailyTextMinutes).timeInMillis, systemPi(ctx, "daily_text", RC_DAILY_TEXT))
+        if (!prefs.dailyTextActive) { cancelRequest(ctx, RC_DAILY_TEXT, TYPE_DAILY_TEXT); return }
+        val at = ReminderLogic.nextDaily(System.currentTimeMillis(), prefs.dailyTextMinutes, minLeadMs)
+        setAlarm(ctx, at, systemPi(ctx, TYPE_DAILY_TEXT, RC_DAILY_TEXT))
     }
 
-    private fun scheduleWeekly(ctx: Context) {
+    private fun scheduleWeekly(ctx: Context, minLeadMs: Long = 0L) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.weeklySummaryActive) { cancelRequest(ctx, RC_WEEKLY, "weekly"); return }
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_WEEK, prefs.weeklyDay)
-            set(Calendar.HOUR_OF_DAY, prefs.weeklyMinutes / 60)
-            set(Calendar.MINUTE, prefs.weeklyMinutes % 60)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.WEEK_OF_YEAR, 1)
-        }
-        setAlarm(ctx, cal.timeInMillis, systemPi(ctx, "weekly", RC_WEEKLY))
+        if (!prefs.weeklySummaryActive) { cancelRequest(ctx, RC_WEEKLY, TYPE_WEEKLY); return }
+        val at = ReminderLogic.nextWeekly(
+            System.currentTimeMillis(), prefs.weeklyDay, prefs.weeklyMinutes, minLeadMs,
+        )
+        setAlarm(ctx, at, systemPi(ctx, TYPE_WEEKLY, RC_WEEKLY))
+    }
+
+    /** Watchdog: inexact on purpose (no status-bar alarm icon); it only needs to run "every few hours". */
+    private fun scheduleHeartbeat(ctx: Context) {
+        val at = System.currentTimeMillis() + ReminderLogic.HEARTBEAT_INTERVAL_MS
+        setInexactAlarm(ctx, at, systemPi(ctx, TYPE_HEARTBEAT, RC_HEARTBEAT))
     }
 
     private fun cancelSystemAlarms(ctx: Context) {
-        cancelRequest(ctx, RC_DAILY, "daily"); cancelRequest(ctx, RC_DAILY_TEXT, "daily_text"); cancelRequest(ctx, RC_WEEKLY, "weekly")
+        SYSTEM_ALARMS.forEach { (type, code) -> cancelRequest(ctx, code, type) }
     }
+
+    // ── catch-up for anything that should already have been delivered ───────────────────────
 
     private fun catchUp(ctx: Context) {
         val prefs = NotificationPrefsRepository.prefs
         val state = ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val today = dateFormat().format(Date(now))
-        val calNow = Calendar.getInstance()
 
-        // Daily summary — deliver if scheduled time already passed today and not yet sent
+        // Daily summary: only if its time passed recently enough to still be useful, and not yet sent today.
         if (prefs.dailySummaryActive && state.getString("last_daily", "") != today) {
-            val scheduled = minutesToTodayMillis(prefs.dailySummaryMinutes)
-            if (now >= scheduled && calNow.get(Calendar.HOUR_OF_DAY) < 11) {
-                ReminderReceiver.handleType(ctx, "daily")
+            val scheduled = ReminderLogic.todayAt(now, prefs.dailySummaryMinutes)
+            if (ReminderLogic.isDailyStillDeliverable(now, scheduled)) {
+                ReminderReceiver.handleType(ctx, TYPE_DAILY)
             }
         }
 
-        // Daily text — deliver if scheduled time already passed today and not yet sent (all day window)
+        // Daily text: deliver if its time already passed today and it has not been sent yet (all-day window).
         if (prefs.dailyTextActive && state.getString("last_daily_text", "") != today) {
-            val scheduled = minutesToTodayMillis(prefs.dailyTextMinutes)
+            val scheduled = ReminderLogic.todayAt(now, prefs.dailyTextMinutes)
             if (now >= scheduled) {
-                ReminderReceiver.handleType(ctx, "daily_text")
+                ReminderReceiver.handleType(ctx, TYPE_DAILY_TEXT)
             }
         }
 
@@ -191,26 +257,30 @@ object ReminderScheduler {
         }
     }
 
-    private fun minutesToTodayMillis(minutesSinceMidnight: Int): Long {
-        val hour = (minutesSinceMidnight / 60).coerceIn(0, 23)
-        val minute = (minutesSinceMidnight % 60).coerceIn(0, 59)
-        return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-    }
+    // ── per-person alarms ───────────────────────────────────────────────────────────────────
+
+    /**
+     * The identity of a person's alarm. Scheduling AND cancelling must build the intent the same way
+     * (action + data), otherwise the system cannot match the PendingIntent and the cancel silently does nothing.
+     */
+    private fun personIntent(ctx: Context, personId: String, kind: Int): Intent =
+        Intent(ctx, ReminderReceiver::class.java).apply {
+            action = ACTION_REMINDER
+            data = Uri.parse("reminder://person/${Uri.encode(personId)}/$kind")
+        }
+
+    private fun systemIntent(ctx: Context, type: String): Intent =
+        Intent(ctx, ReminderReceiver::class.java).apply {
+            action = ACTION_REMINDER
+            data = Uri.parse("reminder://system/$type")
+        }
 
     private fun schedulePersonAlarm(
         ctx: Context, p: PersonRecord, at: Long, isExact: Boolean, kind: Int, typeOverride: String? = null,
     ) {
-        val type = typeOverride ?: "reminder"
-        val intent = Intent(ctx, ReminderReceiver::class.java).apply {
-            action = ACTION_REMINDER
-            data = Uri.parse("reminder://person/${Uri.encode(p.id)}/$kind")
+        val intent = personIntent(ctx, p.id, kind).apply {
             putExtra(EXTRA_PERSON_ID, p.id)
-            putExtra(EXTRA_TYPE, type)
+            putExtra(EXTRA_TYPE, typeOverride ?: "reminder")
             putExtra(EXTRA_IS_EXACT, isExact)
             putExtra(EXTRA_VISIT_TIME, triggerAtMillis(p) ?: at)
             putExtra(EXTRA_SCHEDULED_DATE, p.nextVisitDate)
@@ -223,47 +293,20 @@ object ReminderScheduler {
     }
 
     private fun systemPi(ctx: Context, type: String, code: Int): PendingIntent {
-        val intent = Intent(ctx, ReminderReceiver::class.java).apply {
-            action = ACTION_REMINDER
-            data = Uri.parse("reminder://system/$type")
-            putExtra(EXTRA_TYPE, type)
-        }
+        val intent = systemIntent(ctx, type).apply { putExtra(EXTRA_TYPE, type) }
         return PendingIntent.getBroadcast(
             ctx, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 
-    private fun setAlarm(ctx: Context, at: Long, pi: PendingIntent) {
-        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
-        try {
-            if (AppNotifications.canScheduleExactAlarms(ctx)) {
-                val show = PendingIntent.getActivity(
-                    ctx, 0,
-                    Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
-            } else {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-            }
-        } catch (e: SecurityException) {
-            CrashReporter.record("ReminderScheduler", e)
-            runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) }
-        } catch (e: Exception) {
-            CrashReporter.record("ReminderScheduler", e)
-        }
-    }
-
     private fun cancelAllForPerson(ctx: Context, personId: String) {
-        for (kind in 0..3) cancelRequest(ctx, requestCode(personId, kind))
+        for (kind in 0..3) cancelPi(ctx, requestCode(personId, kind), personIntent(ctx, personId, kind))
     }
 
-    private fun cancelRequest(ctx: Context, requestCode: Int, systemType: String? = null) {
-        val intent = Intent(ctx, ReminderReceiver::class.java).setAction(ACTION_REMINDER)
-        if (systemType != null) {
-            intent.data = Uri.parse("reminder://system/$systemType")
-            intent.putExtra(EXTRA_TYPE, systemType)
-        }
+    private fun cancelRequest(ctx: Context, requestCode: Int, systemType: String) =
+        cancelPi(ctx, requestCode, systemIntent(ctx, systemType))
+
+    private fun cancelPi(ctx: Context, requestCode: Int, intent: Intent) {
         val pi = PendingIntent.getBroadcast(
             ctx, requestCode, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
         ) ?: return
@@ -271,20 +314,43 @@ object ReminderScheduler {
         pi.cancel()
     }
 
-    fun requestCode(personId: String, kind: Int): Int {
-        val base = (Math.abs(personId.hashCode()) % 100_000) * 5 + 1000
-        return base + kind
+    // ── the actual AlarmManager calls ───────────────────────────────────────────────────────
+
+    /**
+     * Strongest first: setAlarmClock (exempt from Doze and battery saver) → setExactAndAllowWhileIdle →
+     * setAndAllowWhileIdle (inexact, used when "Alarms & reminders" is not allowed). Each step only runs if the
+     * previous one threw, so a reminder is always registered with the best option this device allows.
+     */
+    private fun setAlarm(ctx: Context, at: Long, pi: PendingIntent) {
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+        if (AppNotifications.canScheduleExactAlarms(ctx)) {
+            try {
+                val show = PendingIntent.getActivity(
+                    ctx, 0,
+                    Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
+                return
+            } catch (e: Exception) {
+                CrashReporter.record("ReminderScheduler", e, "setAlarmClock failed")
+            }
+            try {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                return
+            } catch (e: Exception) {
+                CrashReporter.record("ReminderScheduler", e, "setExactAndAllowWhileIdle failed")
+            }
+        }
+        setInexactAlarm(ctx, at, pi)
     }
 
-    private fun nextTimeOfDay(minutesSinceMidnight: Int): Calendar {
-        val hour = (minutesSinceMidnight / 60).coerceIn(0, 23)
-        val minute = (minutesSinceMidnight % 60).coerceIn(0, 59)
-        return Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+    private fun setInexactAlarm(ctx: Context, at: Long, pi: PendingIntent) {
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+        try {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        } catch (e: Exception) {
+            CrashReporter.record("ReminderScheduler", e, "setAndAllowWhileIdle failed")
         }
     }
 }
