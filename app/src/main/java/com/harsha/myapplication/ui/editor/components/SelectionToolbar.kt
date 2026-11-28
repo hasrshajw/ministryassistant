@@ -41,15 +41,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -58,7 +56,6 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
-import com.harsha.myapplication.*
 import com.harsha.myapplication.ui.editor.HighlightColors
 import com.harsha.myapplication.ui.editor.highlightColorOf
 import com.harsha.myapplication.ui.editor.richtext.InkBlack
@@ -119,25 +116,19 @@ internal class SelectionToolbarState : TextContextMenuProvider {
 
     /** Runs one of the field's own actions (copy / cut / paste / select all). */
     fun click(item: TextContextMenuItem) {
-        val s = session ?: return
-        item.onClick(s)
+        session?.let { item.onClick(it) }
     }
 
     fun hide() {
         session?.close()
     }
+
+    /** Pin the toolbar while a style toggle is applied so it does not jump with the selection. */
+    fun pin(rect: Rect) {
+        pinnedRect = rect
+    }
 }
 
-/**
- * Dark pill selection toolbar (fixed-size [Surface] inside a [Popup]).
- *
- * Main row: overlapping highlight swatches (tap = show every colour, all other buttons disappear),
- * bold, underline, copy, verse lookup (only when the selection holds a scripture) and a "more"
- * button. With only a caret (no selection) it offers paste / select all.
- *
- * The [Popup] is retained solely for positioning relative to the selection handles; the visual
- * container, elevation, shape and colour tokens come from the official floating toolbar.
- */
 @Composable
 internal fun SelectionToolbar(
     state: SelectionToolbarState,
@@ -152,34 +143,44 @@ internal fun SelectionToolbar(
     onHighlight: (Color) -> Unit,
     onHighlightClear: () -> Unit,
     onClearFormatting: () -> Unit,
-    onScripture: (() -> Unit)?,
-    selection: TextRange
+    onScripture: (() -> Unit)? = null,
 ) {
-    // A new selection (drag a handle, tap elsewhere) releases the pinned position.
-    LaunchedEffect(selection) { state.pinnedRect = null }
-    val menuData = state.dataProvider ?: return
-    val coords = state.anchor?.takeIf { it.isAttached } ?: return
-    // Both calls are snapshot-aware: the toolbar moves and updates while the selection changes.
-    val bounds = menuData.contentBounds(coords)
-    val liveRect = Rect(coords.localToWindow(bounds.topLeft), bounds.size)
-    val rect = state.pinnedRect ?: liveRect
-    /**
-     * UX rule: style TOGGLES (bold / italic / underline) keep the toolbar open and in place, so
-     * formats can be stacked and the selected state is visible. One-shot actions (copy, cut, paste,
-     * pick a highlight colour, clear formatting) are finished, so they dismiss the toolbar.
-     */
+    val provider = state.dataProvider ?: return
+    val anchor = state.anchor ?: return
+    if (!anchor.isAttached) return
+
+    val bounding = provider.boundingBox()
+    val local = if (state.pinnedRect != null) state.pinnedRect!! else bounding
+    // Convert from text-field coordinates to window coordinates.
+    val rect = Rect(
+        left = anchor.localToWindow(local.topLeft).x,
+        top = anchor.localToWindow(local.topLeft).y,
+        right = anchor.localToWindow(local.bottomRight).x,
+        bottom = anchor.localToWindow(local.bottomRight).y,
+    )
+
+    // Release the pin once the selection has actually moved away from the pinned rect.
+    LaunchedEffect(bounding) {
+        val pinned = state.pinnedRect
+        if (pinned != null && (pinned.left != bounding.left || pinned.top != bounding.top ||
+                pinned.right != bounding.right || pinned.bottom != bounding.bottom)
+        ) {
+            state.pinnedRect = null
+        }
+    }
+
     fun keepOpen(action: () -> Unit) {
-        state.pinnedRect = rect
+        state.pin(bounding)
         action()
     }
-    val items = menuData.data().components.filterIsInstance<TextContextMenuItem>()
+
+    val items = provider.data().components.filterIsInstance<TextContextMenuItem>()
     fun actionFor(key: Any): (() -> Unit)? =
         items.firstOrNull { it.key == key }?.let { item -> { state.click(item) } }
     val copyAction = actionFor(TextContextMenuKeys.CopyKey)
     val cutAction = actionFor(TextContextMenuKeys.CutKey)
     val pasteAction = actionFor(TextContextMenuKeys.PasteKey)
     val selectAllAction = actionFor(TextContextMenuKeys.SelectAllKey)
-    val colors = MaterialTheme.colorScheme
     val density = LocalDensity.current
     val topInsetPx = WindowInsets.statusBars.getTop(density)
     val marginPx = with(density) { 8.dp.roundToPx() }
@@ -213,150 +214,148 @@ internal fun SelectionToolbar(
     }
 
     // focusable = false keeps the keyboard and the selection exactly as they are while a button is tapped.
+    // Popup is still required so the toolbar can float over the selection handles; width is capped so
+    // HorizontalFloatingToolbar does not expand to the full window (the original Surface workaround).
     Popup(
         popupPositionProvider = position,
         properties = PopupProperties(focusable = false, clippingEnabled = false)
     ) {
-        // Fixed-size dark pill. (HorizontalFloatingToolbar stretched to a huge pale oval inside the
-        // Popup, because a Popup gives its content the whole window as max size.)
-        Surface(
-            modifier = Modifier.widthIn(max = maxToolbarWidth),
-            shape = RoundedCornerShape(28.dp),
-            color = ToolbarBg,
+        val copy = copyAction
+        val cut = cutAction
+        val paste = pasteAction
+        val selectAll = selectAllAction
+        val hasSelection = copy != null || cut != null
+        val toolbarColors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+            containerColor = ToolbarBg,
             contentColor = ToolbarFg,
-            tonalElevation = 0.dp,
-            shadowElevation = 10.dp
-        ) {
-            AnimatedContent(
-                targetState = state.mode,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "selectionToolbar"
-            ) { mode ->
-                val copy = copyAction
-                val cut = cutAction
-                val paste = pasteAction
-                val selectAll = selectAllAction
-                val hasSelection = copy != null || cut != null
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    when {
-                        // Just a caret: the only useful actions are paste / select all.
-                        !hasSelection -> {
-                            if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
-                            if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
-                        }
+        )
 
-                        // All highlight colours; everything else is hidden so the swatches get the room.
-                        mode == ToolbarMode.Colors && editing -> {
-                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", size = swatch) { state.mode = ToolbarMode.Main }
+        AnimatedContent(
+            targetState = state.mode,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "selectionToolbar",
+            modifier = Modifier.widthIn(max = maxToolbarWidth),
+        ) { mode ->
+            HorizontalFloatingToolbar(
+                expanded = true,
+                modifier = Modifier.wrapContentSize(),
+                colors = toolbarColors,
+            ) {
+                when {
+                    // Just a caret: the only useful actions are paste / select all.
+                    !hasSelection -> {
+                        if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
+                        if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
+                    }
+
+                    // All highlight colours; everything else is hidden so the swatches get the room.
+                    mode == ToolbarMode.Colors && editing -> {
+                        ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", size = swatch) { state.mode = ToolbarMode.Main }
+                        Box(
+                            modifier = Modifier
+                                .size(swatch)
+                                .clip(CircleShape)
+                                .selectable(
+                                    selected = highlightArg == null,
+                                    role = Role.RadioButton,
+                                    onClick = { onHighlightClear(); state.hide() }
+                                )
+                                .semantics { contentDescription = "No highlight" },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(swatch - 12.dp)
+                                    .clip(CircleShape)
+                                    .border(1.dp, ToolbarFg.copy(alpha = 0.6f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.FormatColorReset,
+                                    contentDescription = null,
+                                    tint = if (highlightArg == null) ToolbarAccent else ToolbarFg,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        HighlightColors.forEach { (c, label) ->
+                            val selected = highlightArg != null && highlightColorOf(highlightArg) == c
                             Box(
                                 modifier = Modifier
                                     .size(swatch)
                                     .clip(CircleShape)
                                     .selectable(
-                                        selected = highlightArg == null,
+                                        selected = selected,
                                         role = Role.RadioButton,
-                                        onClick = { onHighlightClear(); state.hide() }
+                                        onClick = { onHighlight(c); state.hide() }
                                     )
-                                    .semantics { contentDescription = "No highlight" },
+                                    .semantics { contentDescription = "$label highlight" },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(swatch - 12.dp)
                                         .clip(CircleShape)
-                                        .border(1.dp, ToolbarFg.copy(alpha = 0.6f), CircleShape),
+                                        .background(c)
+                                        .border(1.dp, ToolbarFg.copy(alpha = 0.4f), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        Icons.Default.FormatColorReset,
-                                        contentDescription = null,
-                                        tint = if (highlightArg == null) ToolbarAccent else ToolbarFg,
-                                        modifier = Modifier.size(18.dp)
+                                    if (selected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = InkBlack,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Less common actions.
+                    mode == ToolbarMode.More -> {
+                        ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state.mode = ToolbarMode.Main }
+                        if (editing) ToolbarButton(Icons.Default.FormatItalic, "Italic", selected = italicOn) { keepOpen(onItalic) }
+                        if (cut != null) ToolbarButton(Icons.Default.ContentCut, "Cut") { cut(); state.hide() }
+                        if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
+                        if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
+                        if (editing) ToolbarButton(Icons.Default.FormatClear, "Clear formatting") { onClearFormatting(); state.hide() }
+                    }
+
+                    else -> {
+                        if (editing) {
+                            // Fanned swatches like JW Library: yellow in front, the others peeking out
+                            // behind it. One tap opens the full colour row.
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 44.dp)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .clickable(role = Role.Button) { state.mode = ToolbarMode.Colors }
+                                    .semantics { contentDescription = "Highlight colours" }
+                                    .padding(start = 10.dp, end = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy((-14).dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val fan = HighlightColors.take(4)
+                                fan.forEachIndexed { i, (c, _) ->
+                                    Box(
+                                        modifier = Modifier
+                                            .zIndex((fan.size - i).toFloat()) // first colour on top
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(c)
                                     )
                                 }
                             }
-                            HighlightColors.forEach { (c, label) ->
-                                val selected = highlightArg != null && highlightColorOf(highlightArg) == c
-                                Box(
-                                    modifier = Modifier
-                                        .size(swatch)
-                                        .clip(CircleShape)
-                                        .selectable(
-                                            selected = selected,
-                                            role = Role.RadioButton,
-                                            onClick = { onHighlight(c); state.hide() }
-                                        )
-                                        .semantics { contentDescription = "$label highlight" },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(swatch - 12.dp)
-                                            .clip(CircleShape)
-                                            .background(c)
-                                            .border(1.dp, ToolbarFg.copy(alpha = 0.4f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (selected) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = InkBlack,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            ToolbarButton(Icons.Default.FormatBold, "Bold", selected = boldOn) { keepOpen(onBold) }
+                            ToolbarButton(Icons.Default.FormatUnderlined, "Underline", selected = underlineOn) { keepOpen(onUnderline) }
                         }
-
-                        // Less common actions.
-                        mode == ToolbarMode.More -> {
-                            ToolbarButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { state.mode = ToolbarMode.Main }
-                            if (editing) ToolbarButton(Icons.Default.FormatItalic, "Italic", selected = italicOn) { keepOpen(onItalic) }
-                            if (cut != null) ToolbarButton(Icons.Default.ContentCut, "Cut") { cut(); state.hide() }
-                            if (paste != null) ToolbarButton(Icons.Default.ContentPaste, "Paste") { paste(); state.hide() }
-                            if (selectAll != null) ToolbarButton(Icons.Default.SelectAll, "Select all") { selectAll() }
-                            if (editing) ToolbarButton(Icons.Default.FormatClear, "Clear formatting") { onClearFormatting(); state.hide() }
+                        if (copy != null) ToolbarButton(Icons.Default.ContentCopy, "Copy") { copy(); state.hide() }
+                        if (onScripture != null) {
+                            ToolbarButton(Icons.AutoMirrored.Filled.MenuBook, "Read scripture") { onScripture(); state.hide() }
                         }
-
-                        else -> {
-                            if (editing) {
-                                // Fanned swatches like JW Library: yellow in front, the others peeking out
-                                // behind it. One tap opens the full colour row.
-                                Row(
-                                    modifier = Modifier
-                                        .heightIn(min = 44.dp)
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .clickable(role = Role.Button) { state.mode = ToolbarMode.Colors }
-                                        .semantics { contentDescription = "Highlight colours" }
-                                        .padding(start = 10.dp, end = 10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy((-14).dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val fan = HighlightColors.take(4)
-                                    fan.forEachIndexed { i, (c, _) ->
-                                        Box(
-                                            modifier = Modifier
-                                                .zIndex((fan.size - i).toFloat()) // first colour on top
-                                                .size(28.dp)
-                                                .clip(CircleShape)
-                                                .background(c)
-                                        )
-                                    }
-                                }
-                                ToolbarButton(Icons.Default.FormatBold, "Bold", selected = boldOn) { keepOpen(onBold) }
-                                ToolbarButton(Icons.Default.FormatUnderlined, "Underline", selected = underlineOn) { keepOpen(onUnderline) }
-                            }
-                            if (copy != null) ToolbarButton(Icons.Default.ContentCopy, "Copy") { copy(); state.hide() }
-                            if (onScripture != null) {
-                                ToolbarButton(Icons.AutoMirrored.Filled.MenuBook, "Read scripture") { onScripture(); state.hide() }
-                            }
-                            ToolbarButton(Icons.Default.MoreVert, "More") { state.mode = ToolbarMode.More }
-                        }
+                        ToolbarButton(Icons.Default.MoreVert, "More") { state.mode = ToolbarMode.More }
                     }
                 }
             }
@@ -373,7 +372,6 @@ internal fun ToolbarButton(
     size: Dp = 44.dp,
     onClick: () -> Unit
 ) {
-    val colors = MaterialTheme.colorScheme
     if (selected == null) {
         IconButton(
             onClick = onClick,
