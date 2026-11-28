@@ -228,4 +228,198 @@ object GenZMessages {
         "{nickname} 🥹 {name} ni kalavalsina time vachchesindi!",
         "{nickname} 🔔 Return visit starts now! {name} tho ready aa?",
     )
+
+
+    /** Morning daily summary when there are no visits scheduled today. */
+    fun morningEmpty(context: Context): Pair<String, String> {
+        GenZPrefsRepository.init(context)
+        val prefs = GenZPrefsRepository.prefs
+        if (!prefs.enabled) {
+            return pickPair(context, "Normal_morning", normalMorning)
+        }
+        val genderKey = if (prefs.gender == Gender.Female) "Female" else "Male"
+        val pool = if (genderKey == "Female") femaleMorning else maleMorning
+        return pickPair(context, "${genderKey}_morning", pool)
+    }
+
+    fun afterVisit(context: Context, contactName: String, isStudy: Boolean, delayMinutes: Int): Pair<String, String> {
+        GenZPrefsRepository.init(context)
+        val prefs = GenZPrefsRepository.prefs
+        val title = if (isStudy) "Update Study Details" else "Update Return Visit Details"
+        if (!prefs.enabled) {
+            return title to "Add the details from your ${if (isStudy) "study" else "return visit"}."
+        }
+        val nickname = prefs.name.ifBlank { if (prefs.gender == Gender.Female) "Heyy" else "Bro" }
+        val genderKey = if (prefs.gender == Gender.Female) "Female" else "Male"
+        val pool = if (genderKey == "Female") femaleAfter else maleAfter
+        val timeText = if (delayMinutes % 60 == 0) {
+            val h = delayMinutes / 60
+            if (h == 1) "1 hour" else "$h hours"
+        } else "$delayMinutes mins"
+        var body = pick(context, "${genderKey}_after_visit", pool)
+            .replace("{name}", contactName)
+            .replace("John", contactName)
+            .replace("{nickname}", nickname)
+            .replace("{nickname/name}", nickname)
+            .replace("1 hours", timeText)
+            .replace("2 hours", timeText)
+            .replace("1 hour", timeText)
+        if (isStudy) {
+            body = body.replace("return visit", "study", ignoreCase = true)
+                .replace("visit", "study", ignoreCase = true)
+        }
+        return title to body
+    }
+
+    fun overdue(context: Context, contactName: String, isStudy: Boolean, overdueMinutes: Int): Pair<String, String> {
+        GenZPrefsRepository.init(context)
+        val prefs = GenZPrefsRepository.prefs
+        val title = "Follow-Up Pending"
+        if (!prefs.enabled || contactName.isBlank()) {
+            val type = if (isStudy) "study" else "return visit"
+            return title to if (contactName.isNotBlank()) "Follow up with $contactName for your $type."
+            else "You have a return visit that still needs an update."
+        }
+        val nickname = prefs.name.ifBlank { if (prefs.gender == Gender.Female) "Heyy" else "Bro" }
+        val genderKey = if (prefs.gender == Gender.Female) "Female" else "Male"
+        val pool = if (genderKey == "Female") femaleOverdue else maleOverdue
+        val timeText = if (overdueMinutes % 60 == 0) {
+            val h = overdueMinutes / 60
+            if (h == 1) "1 hour" else "$h hours"
+        } else "$overdueMinutes mins"
+        var body = pick(context, "${genderKey}_overdue", pool)
+            .replace("{name}", contactName)
+            .replace("John", contactName)
+            .replace("{nickname}", nickname)
+            .replace("{nickname/name}", nickname)
+            .replace("1 hours", timeText)
+            .replace("2 hours", timeText)
+            .replace("1 hour", timeText)
+        if (isStudy) {
+            body = body.replace("return visit", "study", ignoreCase = true)
+                .replace("visit", "study", ignoreCase = true)
+        }
+        return title to body
+    }
+
+    private fun pickPair(context: Context, poolId: String, messages: Array<Pair<String, String>>): Pair<String, String> {
+        if (messages.isEmpty()) return "Good Morning" to "Have a meaningful day in the ministry."
+        val idx = pickIndex(context, poolId, messages.size)
+        return messages.getOrElse(idx) { messages.first() }
+    }
+
+    private fun pickIndex(context: Context, poolId: String, total: Int): Int {
+        val sp = context.applicationContext.getSharedPreferences(POOL_PREFS, Context.MODE_PRIVATE)
+        val key = "pool_$poolId"
+        var pool = sp.getString(key, null)?.split(",")?.mapNotNull { it.toIntOrNull() }?.toMutableList()
+            ?: mutableListOf()
+        if (pool.isEmpty()) {
+            pool = (0 until total).toMutableList()
+            pool.shuffle()
+        }
+        val index = pool.removeAt(0)
+        sp.edit().putString(key, pool.joinToString(",")).apply()
+        return index
+    }
+
+    private val normalMorning = arrayOf(
+        "Good Morning ☀️" to "Have a meaningful day in the ministry.",
+        "Good Morning 💚" to "Ready for another day of ministry?",
+        "Good Morning ☀️" to "Take a moment to plan your ministry for today.",
+    )
+
+    private val maleMorning = arrayOf(
+        "Good Morning Bro ☀️" to "Eroju full ga enjoy cheyyi 😌 Opportunity dorikithe evaritho aina preaching cheyadaniki try cheyyi!",
+        "Morninggg Orey 👀" to "Eroju emaina special plans unnaya? First Day Text chadhivesava?",
+        "Rise & Shine ☀️" to "Eroju chill ga undu bro 😎 Kudirthe oka manchi conversation start cheyyi.",
+        "Good Morning Boss 😌" to "Day start cheyyadam mundu Bible open cheyyi… 5 mins chaalu 👀",
+        "Orey Morning 😂" to "Eroju ministry plan lekapoyina parledu… opportunity vaste miss avvaku!",
+        "Morning Bro ☀️" to "Day Text chadhivi, coffee/tea pattuko… tarvatha full day enjoy cheyyi 😂",
+        "Good Morning 👊" to "Eroju konchem Bible time ki kuda slot ivvu bro 📖",
+        "Today’s Vibe 😎" to "No plans? Perfect. Eroju enjoy cheyyi… chance dorikithe preaching kuda cheyyi!",
+        "Good Morning Bro 💚" to "Eroju peaceful ga enjoy cheyyi. Kudirthe evarikaina oka encouraging thought share cheyyi.",
+        "Have a Good Day Bro ☀️" to "Eroju nee day ni enjoy cheyyi! 📖 Bible time ki time dorikithe super… preaching chance vaste inka super!",
+    )
+
+    private val femaleMorning = arrayOf(
+        "Good Morning Bangaram ☀️" to "Eroju full ga enjoy cheyyi 🫶 Kudirthe evaritho aina preaching cheyadaniki try cheyyi!",
+        "Morninggg Bestie 👀" to "Eroju plans em levu… Day Text chadhivi day ni enjoy cheyyi!",
+        "Good Morning Chinnari 🌸" to "First Day Text 📖 Tarvatha nee day ni full enjoy cheyyi 😌",
+        "Heyy Good Morning 🫶" to "Eroju konchem Bible time ki kuda place ivvu… migatha time enjoy cheyyi!",
+        "Morning Ammayi ☀️" to "Eroju ministry schedule empty undhi 👀 Opportunity vaste matram miss avvaku!",
+        "Good Morning Bestie 💕" to "Day Text chadhivesi, breakfast chesi, life enjoy cheyyi 😂",
+        "Rise & Shine 🫶" to "Eroju Day Text tho start chesthe nice ga untundi 📖",
+        "Good Morning 🌸" to "Eroju full enjoy cheyyi! Kudirthe evarikaina oka encouraging thought share cheyyi.",
+        "Good Morning Bestie 🫶" to "Eroju nee day ni enjoy cheyyi. Chance dorikithe preaching ki oka small try ivvu!",
+        "Have a Beautiful Day 🌷" to "Eroju full ga enjoy cheyyi! 📖 Day Text chadhavu… chance dorikithe preaching kuda try cheyyi!",
+    )
+
+    private val maleAfter = arrayOf(
+        "Bro 👀 visit aipoyi 1 hours ayyindi… update chesava?",
+        "Guru 😂 {name} tho visit ayipoyindi… details ekkada?",
+        "Bro 😭 return visit complete chesav… note cheyyadam marchipoyava?",
+        "Bossu 👀 {name} tho visit ela ayyindi? Details add cheyyi!",
+        "Brooo ⏰ 1 hours ayyindi… visit update pending undhi!",
+        "Guru 😂 Mission complete… report ekkada boss?",
+        "Bro 👀 return visit ayipoyindi kada… details save chesava?",
+        "Anna 😭 visit chesav, ippudu app lo kuda cheppu!",
+        "Bro 😎 {name} tho visit done aa? Update cheyyadam marchipoku!",
+        "{nickname} 👀 visit ayipoyindi… update chesava?",
+        "{nickname} 😂 {name} tho visit complete! Details add cheyyi bro!",
+        "{nickname} ⏰ 1 hours ayyindi… visit update pending undhi!",
+        "{nickname} 😎 Mission complete… notes lo kuda add cheddama?",
+        "{nickname} 😭 visit details inka pending unnayi!",
+        "{nickname} ❤️ visit done aithe details kuda done cheddama?",
+    )
+
+    private val femaleAfter = arrayOf(
+        "Bangaram 👀 visit aipoyi 1 hours ayyindi… update chesava?",
+        "Heyy 🥹 {name} tho visit ayipoyindi… details add chesava?",
+        "Chinnari 👀 return visit complete ayyinda? Update cheyyadam marchipoku!",
+        "Bangaram 😭 visit ayipoyindi… naku kuda details cheppava?",
+        "Heyy bestie 😂 {name} tho visit done… update ekkada?",
+        "Chinnitalli 🫶 1 hours ayyindi… visit details pending unnayi!",
+        "Bestie 👀 return visit ayipoyindi kada… oka small update cheyyi!",
+        "Bangaram 😌 visit complete… ippudu details save cheddama?",
+        "Heyy 🥹 {name} tho visit ela ayyindi? Konchem note cheyyi!",
+        "{nickname} 👀 visit ayipoyindi… update chesava?",
+        "{nickname} 🥹 {name} tho visit complete ayyindi… details add cheyyi!",
+        "{nickname} ⏰ 1 hours ayyindi… visit update pending undhi!",
+        "{nickname} 🫶 Mission complete… app lo kuda complete cheddama?",
+        "{nickname} 😭 visit details inka pending unnayi!",
+        "{nickname} ❤️ visit done aithe update kuda done cheddama?",
+    )
+
+    private val maleOverdue = arrayOf(
+        "Bro 👀 {name} tho follow-up overdue! Inka update cheyyaledha? 😭",
+        "Guru 😂 {name} tho visit aipoyi hours ayyindi… still pending aa?",
+        "Bro 😭 {name} waiting for update… report eppudu isthav?",
+        "Bossu 👀 {name} tho return visit overdue aipoyindi… update cheyyi!",
+        "Brooo ⏰ {name} tho follow-up miss avvakunda update kottu!",
+        "Guru 😂 {name} ni marchipoyava? Overdue alert active!",
+        "Bro 👀 {name} tho status inka pending enti? Update cheyyi anna!",
+        "Anna 😭 {name} tho return visit records pending unnayi… complete cheyyi!",
+        "{nickname} 👀 {name} tho follow-up overdue! Update chesava?",
+        "{nickname} 😂 {name} tho visit aipoyi hours ayyindi… report ekkada?",
+        "{nickname} ⏰ {name} waiting for update… late avvaku!",
+        "{nickname} 😭 return visit overdue aipoyindi… update kottu!",
+        "{nickname} 😎 {name} tho follow-up pending undhi… complete cheyyi!",
+    )
+
+    private val femaleOverdue = arrayOf(
+        "Bangaram 👀 {name} tho follow-up overdue! Inka update cheyyaledha? 😭",
+        "Heyy 🥹 {name} tho visit aipoyi hours ayyindi… still pending aa?",
+        "Chinnari 😭 {name} waiting for update… report eppudu isthave?",
+        "Bangaram 👀 {name} tho return visit overdue aipoyindi… update cheyyi!",
+        "Heyy bestie ⏰ {name} tho follow-up miss avvakunda update kottu!",
+        "Bestie 😂 {name} ni marchipoyava? Overdue alert active!",
+        "Bangaram 👀 {name} tho status inka pending enti? Update cheyyi bestie!",
+        "Chinnitalli 😭 {name} tho return visit records pending unnayi… complete cheyyi!",
+        "{nickname} 👀 {name} tho follow-up overdue! Update chesava?",
+        "{nickname} 🥹 {name} tho visit aipoyi hours ayyindi… report ekkada?",
+        "{nickname} 🫶 {name} waiting for update… late avvaku!",
+        "{nickname} 😭 return visit overdue aipoyindi… update kottu!",
+        "{nickname} 👀 {name} tho follow-up pending undhi… complete cheyyi!",
+    )
+
 }

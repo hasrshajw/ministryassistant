@@ -6,43 +6,104 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.harsha.myapplication.MainActivity
 import com.harsha.myapplication.data.DAY_MS
+import com.harsha.myapplication.data.HoursRepository
+import com.harsha.myapplication.data.NotificationPrefsRepository
 import com.harsha.myapplication.data.PeopleRepository
 import com.harsha.myapplication.data.PersonRecord
 import com.harsha.myapplication.data.dateFormat
 import com.harsha.myapplication.data.timeFormat
 import java.util.Calendar
+import java.util.Date
 
 /**
- * Schedules one OS-level alarm per person at their next visit date + time.
- *
- * The alarm is stored by Android's AlarmManager, NOT by this app, so it fires even if the app
- * has not been opened for months. It is wiped by a reboot (re-registered by [BootReceiver])
- * and by "Force stop" (re-registered the next time the app is opened).
+ * Schedules OS alarms for visit exact/before/after/overdue, daily morning,
+ * evening update, and weekly summary. [BootReceiver] re-registers after reboot.
  */
 object ReminderScheduler {
     const val ACTION_REMINDER = "com.harsha.myapplication.ACTION_VISIT_REMINDER"
     const val EXTRA_PERSON_ID = "person_id"
+    const val EXTRA_TYPE = "type"
+    const val EXTRA_IS_EXACT = "is_exact"
+    const val EXTRA_VISIT_TIME = "visit_time"
+    const val EXTRA_SCHEDULED_DATE = "scheduled_date"
 
-    private const val DEFAULT_TIME = "9:00 AM"            // used when a visit has a date but no time
-    private const val CATCH_UP_WINDOW_MS = DAY_MS         // after a reboot, still notify for visits missed in the last 24h
+    private const val DEFAULT_TIME = "9:00 AM"
+    private const val CATCH_UP_WINDOW_MS = DAY_MS
     private const val STATE_PREFS = "reminder_state"
 
-    // ── PendingIntent (unique per person via the data URI, so ids never collide) ──────────
-    private fun intentFor(ctx: Context, personId: String): Intent =
-        Intent(ctx, ReminderReceiver::class.java)
-            .setAction(ACTION_REMINDER)
-            .setData(Uri.parse("reminder://person/${Uri.encode(personId)}"))
-            .putExtra(EXTRA_PERSON_ID, personId)
+    private const val RC_DAILY = 100
+    private const val RC_EVENING = 101
+    private const val RC_WEEKLY = 102
 
-    private fun pendingIntent(ctx: Context, personId: String, create: Boolean): PendingIntent? {
-        val flags = PendingIntent.FLAG_IMMUTABLE or
-            if (create) PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_NO_CREATE
-        return PendingIntent.getBroadcast(ctx, 0, intentFor(ctx, personId), flags)
+    fun rescheduleAll(ctx: Context, catchUpMissed: Boolean = false) {
+        val app = ctx.applicationContext
+        NotificationPrefsRepository.init(app)
+        HoursRepository.init(app)
+        val people = PeopleRepository.load(app)
+
+        if (!NotificationPrefsRepository.prefs.masterEnabled) {
+            cancelSystemAlarms(app)
+            people.forEach { cancelAllForPerson(app, it.id) }
+            return
+        }
+
+        scheduleDaily(app)
+        scheduleEvening(app)
+        scheduleWeekly(app)
+        people.forEach { schedule(app, it) }
+        if (catchUpMissed) catchUp(app)
     }
 
-    // ── Trigger time ──────────────────────────────────────────────────────────────────────
-    /** Epoch millis of the visit, or null when there is nothing to remind about. */
+    fun schedule(ctx: Context, p: PersonRecord) {
+        val app = ctx.applicationContext
+        NotificationPrefsRepository.init(app)
+        cancelAllForPerson(app, p.id)
+
+        if (!NotificationPrefsRepository.prefs.masterEnabled) return
+        if (p.id.isBlank() || p.type.equals("inactive", ignoreCase = true)) return
+
+        val at = triggerAtMillis(p) ?: return
+        val now = System.currentTimeMillis()
+        val prefs = NotificationPrefsRepository.prefs
+
+        if (at > now) {
+            schedulePersonAlarm(app, p, at, isExact = true, kind = 0)
+        }
+        if (prefs.visitBeforeActive) {
+            val before = at - prefs.visitBeforeLeadMinutes * 60_000L
+            if (before > now) schedulePersonAlarm(app, p, before, isExact = false, kind = 1)
+        }
+        if (prefs.visitAfterActive) {
+            val after = at + prefs.visitAfterDelayMinutes * 60_000L
+            if (after > now) {
+                schedulePersonAlarm(app, p, after, isExact = false, kind = 2, typeOverride = "after_visit")
+            }
+        }
+        val overdueDelay = (prefs.visitAfterDelayMinutes * 2).coerceAtLeast(60)
+        val overdueAt = at + overdueDelay * 60_000L
+        if (overdueAt > now) {
+            schedulePersonAlarm(app, p, overdueAt, isExact = false, kind = 3, typeOverride = "overdue_visit")
+        }
+    }
+
+    fun cancel(ctx: Context, personId: String) = cancelAllForPerson(ctx.applicationContext, personId)
+
+    fun clearState(ctx: Context, personId: String) {
+        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().remove("fired:$personId").apply()
+    }
+
+    fun markFired(ctx: Context, personId: String, at: Long) {
+        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .edit().putLong("fired:$personId", at).apply()
+    }
+
+    fun wasFired(ctx: Context, personId: String, at: Long): Boolean =
+        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+            .getLong("fired:$personId", -1L) == at
+
     fun triggerAtMillis(p: PersonRecord): Long? {
         if (p.id.isBlank() || p.nextVisitDate.isBlank()) return null
         if (p.type == "inactive") return null
@@ -67,67 +128,141 @@ object ReminderScheduler {
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────────────────
-    /** (Re)schedules the reminder for one person. Safe to call repeatedly. */
-    fun schedule(ctx: Context, p: PersonRecord) {
-        val app = ctx.applicationContext
-        cancel(app, p.id)
-        val at = triggerAtMillis(p) ?: return
-        if (at <= System.currentTimeMillis()) return
-        val am = app.getSystemService(AlarmManager::class.java) ?: return
-        val pi = pendingIntent(app, p.id, create = true) ?: return
+    private fun scheduleDaily(ctx: Context) {
+        val prefs = NotificationPrefsRepository.prefs
+        if (!prefs.dailySummaryActive) { cancelRequest(ctx, RC_DAILY); return }
+        setAlarm(ctx, nextTimeOfDay(prefs.dailySummaryMinutes).timeInMillis, systemPi(ctx, "daily", RC_DAILY))
+    }
+
+    private fun scheduleEvening(ctx: Context) {
+        if (!NotificationPrefsRepository.prefs.masterEnabled) { cancelRequest(ctx, RC_EVENING); return }
+        setAlarm(ctx, nextTimeOfDay(20 * 60 + 30).timeInMillis, systemPi(ctx, "evening", RC_EVENING))
+    }
+
+    private fun scheduleWeekly(ctx: Context) {
+        val prefs = NotificationPrefsRepository.prefs
+        if (!prefs.weeklySummaryActive) { cancelRequest(ctx, RC_WEEKLY); return }
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_WEEK, prefs.weeklyDay)
+            set(Calendar.HOUR_OF_DAY, prefs.weeklyMinutes / 60)
+            set(Calendar.MINUTE, prefs.weeklyMinutes % 60)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.WEEK_OF_YEAR, 1)
+        }
+        setAlarm(ctx, cal.timeInMillis, systemPi(ctx, "weekly", RC_WEEKLY))
+    }
+
+    private fun cancelSystemAlarms(ctx: Context) {
+        cancelRequest(ctx, RC_DAILY); cancelRequest(ctx, RC_EVENING); cancelRequest(ctx, RC_WEEKLY)
+    }
+
+    private fun catchUp(ctx: Context) {
+        val prefs = NotificationPrefsRepository.prefs
+        val state = ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val today = dateFormat().format(Date(now))
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+        if (prefs.dailySummaryActive && state.getString("last_daily", "") != today && hour < 11) {
+            val scheduled = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, prefs.dailySummaryMinutes / 60)
+                set(Calendar.MINUTE, prefs.dailySummaryMinutes % 60)
+                set(Calendar.SECOND, 0)
+            }
+            if (now >= scheduled.timeInMillis) {
+                ReminderReceiver.handleType(ctx, "daily")
+            }
+        }
+
+        PeopleRepository.load(ctx).forEach { p ->
+            val at = triggerAtMillis(p) ?: return@forEach
+            if (at <= now && now - at <= CATCH_UP_WINDOW_MS && !wasFired(ctx, p.id, at)) {
+                NotificationHelper.showVisitReminder(ctx, p, true, requestCode(p.id, 0), at)
+                markFired(ctx, p.id, at)
+            }
+        }
+    }
+
+    private fun schedulePersonAlarm(
+        ctx: Context, p: PersonRecord, at: Long, isExact: Boolean, kind: Int, typeOverride: String? = null,
+    ) {
+        val type = typeOverride ?: "reminder"
+        val intent = Intent(ctx, ReminderReceiver::class.java).apply {
+            action = ACTION_REMINDER
+            data = Uri.parse("reminder://person/${Uri.encode(p.id)}/$kind")
+            putExtra(EXTRA_PERSON_ID, p.id)
+            putExtra(EXTRA_TYPE, type)
+            putExtra(EXTRA_IS_EXACT, isExact)
+            putExtra(EXTRA_VISIT_TIME, triggerAtMillis(p) ?: at)
+            putExtra(EXTRA_SCHEDULED_DATE, p.nextVisitDate)
+        }
+        val pi = PendingIntent.getBroadcast(
+            ctx, requestCode(p.id, kind), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        setAlarm(ctx, at, pi)
+    }
+
+    private fun systemPi(ctx: Context, type: String, code: Int): PendingIntent {
+        val intent = Intent(ctx, ReminderReceiver::class.java).apply {
+            action = ACTION_REMINDER
+            data = Uri.parse("reminder://system/$type")
+            putExtra(EXTRA_TYPE, type)
+        }
+        return PendingIntent.getBroadcast(
+            ctx, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    private fun setAlarm(ctx: Context, at: Long, pi: PendingIntent) {
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
         try {
-            if (AppNotifications.canScheduleExactAlarms(app)) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            if (AppNotifications.canScheduleExactAlarms(ctx)) {
+                val show = PendingIntent.getActivity(
+                    ctx, 0,
+                    Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), pi)
             } else {
-                // Exact-alarm permission not granted: still fires while idle, but may be a few minutes late.
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
             }
         } catch (e: SecurityException) {
             CrashReporter.record("ReminderScheduler", e)
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+            runCatching { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi) }
+        } catch (e: Exception) {
+            CrashReporter.record("ReminderScheduler", e)
         }
     }
 
-    fun cancel(ctx: Context, personId: String) {
-        val app = ctx.applicationContext
-        pendingIntent(app, personId, create = false)?.let {
-            app.getSystemService(AlarmManager::class.java)?.cancel(it)
-            it.cancel()
+    private fun cancelAllForPerson(ctx: Context, personId: String) {
+        for (kind in 0..3) cancelRequest(ctx, requestCode(personId, kind))
+    }
+
+    private fun cancelRequest(ctx: Context, requestCode: Int) {
+        val intent = Intent(ctx, ReminderReceiver::class.java).setAction(ACTION_REMINDER)
+        val pi = PendingIntent.getBroadcast(
+            ctx, requestCode, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        ) ?: return
+        ctx.getSystemService(AlarmManager::class.java)?.cancel(pi)
+        pi.cancel()
+    }
+
+    fun requestCode(personId: String, kind: Int): Int {
+        val base = (Math.abs(personId.hashCode()) % 100_000) * 5 + 1000
+        return base + kind
+    }
+
+    private fun nextTimeOfDay(minutesSinceMidnight: Int): Calendar {
+        val hour = (minutesSinceMidnight / 60).coerceIn(0, 23)
+        val minute = (minutesSinceMidnight % 60).coerceIn(0, 59)
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-    }
-
-    /**
-     * Re-registers every alarm. Call on app start, after reboot / app update / clock change.
-     * With [catchUpMissed] (used after a reboot), a visit whose time passed while the phone was
-     * off — within the last 24h and never notified — is shown right away.
-     */
-    fun rescheduleAll(ctx: Context, catchUpMissed: Boolean = false) {
-        val app = ctx.applicationContext
-        val now = System.currentTimeMillis()
-        PeopleRepository.load(app).forEach { p ->
-            schedule(app, p)
-            if (catchUpMissed) {
-                val at = triggerAtMillis(p)
-                if (at != null && at <= now && now - at <= CATCH_UP_WINDOW_MS && !wasFired(app, p.id, at)) {
-                    ReminderNotifier.show(app, p, at)
-                }
-            }
-        }
-    }
-
-    // ── "Already notified" bookkeeping (prevents duplicates after reboot) ─────────────────
-    fun markFired(ctx: Context, personId: String, at: Long) {
-        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
-            .edit().putLong("fired:$personId", at).apply()
-    }
-
-    fun wasFired(ctx: Context, personId: String, at: Long): Boolean =
-        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
-            .getLong("fired:$personId", -1L) == at
-
-    fun clearState(ctx: Context, personId: String) {
-        ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
-            .edit().remove("fired:$personId").apply()
     }
 }

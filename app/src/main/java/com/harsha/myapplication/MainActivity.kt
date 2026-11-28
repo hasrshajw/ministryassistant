@@ -99,6 +99,7 @@ import com.harsha.myapplication.ui.settings.NotificationSettingsScreen
 import com.harsha.myapplication.ui.settings.BackupScreen
 import com.harsha.myapplication.data.BackupRepository
 import com.harsha.myapplication.data.NotificationPrefsRepository
+import com.harsha.myapplication.notifications.ReminderScheduler
 import com.harsha.myapplication.data.HomeLayoutRepository
 import com.harsha.myapplication.data.FeedbackRepository
 import com.harsha.myapplication.data.SetupRepository
@@ -171,6 +172,12 @@ class MainActivity : FragmentActivity() {
         NotificationPrefsRepository.init(applicationContext)
         HomeLayoutRepository.init(applicationContext)
         AppNotifications.ensureChannel(applicationContext)
+        // Wire preference changes → re-schedule all alarms
+        NotificationPrefsRepository.onChanged = {
+            Thread { ReminderScheduler.rescheduleAll(applicationContext) }.start()
+        }
+        // Schedule daily / visit / evening / weekly alarms (and catch up missed ones)
+        Thread { ReminderScheduler.rescheduleAll(applicationContext, catchUpMissed = true) }.start()
         SecurityRepository.init(applicationContext)
         BackupRepository.init(applicationContext)
         BackupRepository.runAutoBackupIfDue(applicationContext)

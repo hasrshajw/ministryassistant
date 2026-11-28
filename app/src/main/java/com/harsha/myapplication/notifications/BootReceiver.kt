@@ -25,8 +25,7 @@ class BootReceiver : BroadcastReceiver() {
                             catchUpMissed = intent.action == Intent.ACTION_BOOT_COMPLETED,
                         )
                     } catch (e: Throwable) {
-                        // A failed reschedule must not crash the app in the background after boot.
-                        CrashReporter.record("BootReceiver", e, "Failed to reschedule reminders (${intent.action})")
+                        CrashReporter.record("BootReceiver", e, "Failed to reschedule (${intent.action})")
                     } finally {
                         pending.finish()
                     }
