@@ -18,13 +18,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,19 +31,15 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -79,35 +74,17 @@ internal fun AppSearchField(
         }
     }
 
-    // Material 3 1.5 state-based search bar: SearchBarState + TextFieldState with the slot-based
-    // SearchBar (the old expanded/onExpandedChange DockedSearchBar API is deprecated).
-    // Results are shown live in the screen's own list, so the bar never expands into a results
-    // surface (expanded = false). The public API still takes a String so callers keep their state;
-    // it is mirrored into a TextFieldState here, in both directions.
-    val textFieldState = rememberTextFieldState(query)
-    val searchBarState = rememberSearchBarState()
-    val currentQuery by rememberUpdatedState(query)
-    val currentOnQueryChange by rememberUpdatedState(onQueryChange)
-
-    // Caller -> field (e.g. the clear button, restored state).
-    LaunchedEffect(query) {
-        if (textFieldState.text.toString() != query) {
-            textFieldState.setTextAndPlaceCursorAtEnd(query)
-        }
-    }
-    // Field -> caller (typing).
-    LaunchedEffect(textFieldState) {
-        snapshotFlow { textFieldState.text.toString() }.collect { text ->
-            if (text != currentQuery) currentOnQueryChange(text)
-        }
-    }
-
-    SearchBar(
-        state = searchBarState,
+    // Material 3 search bar (DockedSearchBar + SearchBarDefaults.InputField) so the field picks up
+    // the official search tokens: shape, height, colours and the expressive state layers.
+    // Results are shown live in the screen's own list, so the bar never expands into a dropdown.
+    DockedSearchBar(
         modifier = modifier,
+        expanded = false,
+        onExpandedChange = {},
         inputField = {
             SearchBarDefaults.InputField(
-                state = textFieldState,
+                query = query,
+                onQueryChange = onQueryChange,
                 onSearch = { onSearch() },
                 expanded = false,
                 onExpandedChange = {},
@@ -134,6 +111,7 @@ internal fun AppSearchField(
                 },
             )
         },
+        content = {},
     )
 }
 
