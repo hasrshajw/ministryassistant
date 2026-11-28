@@ -191,13 +191,13 @@ fun SettingsScreen(
                 items = listOf(
                     RowItem(Icons.Outlined.Palette, "Appearance", onClick = go(onOpenAppearance)),
                     RowItem(Icons.Outlined.Notifications, "Notifications", onClick = go(onOpenNotifications)),
+                    RowItem(Icons.Outlined.Tune, "Customize App", onClick = go(onOpenCustomizeApp)),
                     RowItem(
                         Icons.Outlined.VerifiedUser,
                         "Permissions",
                         AppPermissions.summary(LocalContext.current),
                         go(onOpenPermissions),
                     ),
-                    RowItem(Icons.Outlined.Tune, "Customize App", onClick = go(onOpenCustomizeApp)),
                 ),
             )
 
