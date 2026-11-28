@@ -229,11 +229,17 @@ internal fun SelectionToolbar(
             targetState = state.mode,
             transitionSpec = { fadeIn() togetherWith fadeOut() },
             label = "selectionToolbar",
-            modifier = Modifier.widthIn(max = maxToolbarWidth),
+            // The Popup hands its content the whole window as max constraints; without a height cap the
+            // floating toolbar's pill shape grew into a huge circle and was positioned off-screen.
+            modifier = Modifier
+                .widthIn(max = maxToolbarWidth)
+                .heightIn(max = ToolbarMaxHeight),
         ) { mode ->
             HorizontalFloatingToolbar(
                 expanded = true,
-                modifier = Modifier.wrapContentSize(),
+                modifier = Modifier
+                    .wrapContentSize()
+                    .heightIn(max = ToolbarMaxHeight),
                 colors = toolbarColors,
             ) {
                 when {
@@ -357,6 +363,8 @@ internal fun SelectionToolbar(
         }
     }
 }
+
+private val ToolbarMaxHeight = 64.dp
 
 @Composable
 internal fun ToolbarButton(
