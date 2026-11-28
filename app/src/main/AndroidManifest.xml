@@ -17,6 +17,7 @@
        SCHEDULE_EXACT_ALARM is the Android 12+ "Alarms & reminders" permission (user-granted). -->
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
 
   <!-- Bible downloads: network + a foreground service so the download/import survives
        leaving the screen or putting the app in the recents list. -->

@@ -170,11 +170,13 @@ class MainActivity : FragmentActivity() {
         SetupRepository.init(applicationContext)
         HoursRepository.init(applicationContext)
         NotificationPrefsRepository.init(applicationContext)
+        com.harsha.myapplication.data.GenZPrefsRepository.init(applicationContext)
         HomeLayoutRepository.init(applicationContext)
         AppNotifications.ensureChannel(applicationContext)
         // Wire preference changes → re-schedule all alarms
         NotificationPrefsRepository.onChanged = {
-            Thread { ReminderScheduler.rescheduleAll(applicationContext) }.start()
+            // catchUpMissed so enabling daily text after its time still delivers today once
+            Thread { ReminderScheduler.rescheduleAll(applicationContext, catchUpMissed = true) }.start()
         }
         // Schedule daily / visit / evening / weekly alarms (and catch up missed ones)
         Thread { ReminderScheduler.rescheduleAll(applicationContext, catchUpMissed = true) }.start()

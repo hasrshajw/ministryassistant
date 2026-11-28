@@ -130,19 +130,19 @@ object ReminderScheduler {
 
     private fun scheduleDaily(ctx: Context) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.dailySummaryActive) { cancelRequest(ctx, RC_DAILY); return }
+        if (!prefs.dailySummaryActive) { cancelRequest(ctx, RC_DAILY, "daily"); return }
         setAlarm(ctx, nextTimeOfDay(prefs.dailySummaryMinutes).timeInMillis, systemPi(ctx, "daily", RC_DAILY))
     }
 
     private fun scheduleDailyText(ctx: Context) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.dailyTextActive) { cancelRequest(ctx, RC_DAILY_TEXT); return }
+        if (!prefs.dailyTextActive) { cancelRequest(ctx, RC_DAILY_TEXT, "daily_text"); return }
         setAlarm(ctx, nextTimeOfDay(prefs.dailyTextMinutes).timeInMillis, systemPi(ctx, "daily_text", RC_DAILY_TEXT))
     }
 
     private fun scheduleWeekly(ctx: Context) {
         val prefs = NotificationPrefsRepository.prefs
-        if (!prefs.weeklySummaryActive) { cancelRequest(ctx, RC_WEEKLY); return }
+        if (!prefs.weeklySummaryActive) { cancelRequest(ctx, RC_WEEKLY, "weekly"); return }
         val cal = Calendar.getInstance().apply {
             set(Calendar.DAY_OF_WEEK, prefs.weeklyDay)
             set(Calendar.HOUR_OF_DAY, prefs.weeklyMinutes / 60)
@@ -155,7 +155,7 @@ object ReminderScheduler {
     }
 
     private fun cancelSystemAlarms(ctx: Context) {
-        cancelRequest(ctx, RC_DAILY); cancelRequest(ctx, RC_DAILY_TEXT); cancelRequest(ctx, RC_WEEKLY)
+        cancelRequest(ctx, RC_DAILY, "daily"); cancelRequest(ctx, RC_DAILY_TEXT, "daily_text"); cancelRequest(ctx, RC_WEEKLY, "weekly")
     }
 
     private fun catchUp(ctx: Context) {
@@ -163,19 +163,25 @@ object ReminderScheduler {
         val state = ctx.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val today = dateFormat().format(Date(now))
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val calNow = Calendar.getInstance()
 
-        if (prefs.dailySummaryActive && state.getString("last_daily", "") != today && hour < 11) {
-            val scheduled = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, prefs.dailySummaryMinutes / 60)
-                set(Calendar.MINUTE, prefs.dailySummaryMinutes % 60)
-                set(Calendar.SECOND, 0)
-            }
-            if (now >= scheduled.timeInMillis) {
+        // Daily summary — deliver if scheduled time already passed today and not yet sent
+        if (prefs.dailySummaryActive && state.getString("last_daily", "") != today) {
+            val scheduled = minutesToTodayMillis(prefs.dailySummaryMinutes)
+            if (now >= scheduled && calNow.get(Calendar.HOUR_OF_DAY) < 11) {
                 ReminderReceiver.handleType(ctx, "daily")
             }
         }
 
+        // Daily text — deliver if scheduled time already passed today and not yet sent (all day window)
+        if (prefs.dailyTextActive && state.getString("last_daily_text", "") != today) {
+            val scheduled = minutesToTodayMillis(prefs.dailyTextMinutes)
+            if (now >= scheduled) {
+                ReminderReceiver.handleType(ctx, "daily_text")
+            }
+        }
+
+        // Missed exact visit within last 24h
         PeopleRepository.load(ctx).forEach { p ->
             val at = triggerAtMillis(p) ?: return@forEach
             if (at <= now && now - at <= CATCH_UP_WINDOW_MS && !wasFired(ctx, p.id, at)) {
@@ -183,6 +189,17 @@ object ReminderScheduler {
                 markFired(ctx, p.id, at)
             }
         }
+    }
+
+    private fun minutesToTodayMillis(minutesSinceMidnight: Int): Long {
+        val hour = (minutesSinceMidnight / 60).coerceIn(0, 23)
+        val minute = (minutesSinceMidnight % 60).coerceIn(0, 59)
+        return Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
     }
 
     private fun schedulePersonAlarm(
@@ -241,8 +258,12 @@ object ReminderScheduler {
         for (kind in 0..3) cancelRequest(ctx, requestCode(personId, kind))
     }
 
-    private fun cancelRequest(ctx: Context, requestCode: Int) {
+    private fun cancelRequest(ctx: Context, requestCode: Int, systemType: String? = null) {
         val intent = Intent(ctx, ReminderReceiver::class.java).setAction(ACTION_REMINDER)
+        if (systemType != null) {
+            intent.data = Uri.parse("reminder://system/$systemType")
+            intent.putExtra(EXTRA_TYPE, systemType)
+        }
         val pi = PendingIntent.getBroadcast(
             ctx, requestCode, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
         ) ?: return
