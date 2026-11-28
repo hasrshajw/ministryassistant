@@ -3,6 +3,9 @@ package com.harsha.myapplication.data
 import com.harsha.myapplication.telemetry.CrashReporter
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.text.format.DateUtils
 import androidx.compose.runtime.getValue
@@ -14,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,6 +62,12 @@ data class BackupPrefs(
         else DateUtils.getRelativeTimeSpanString(
             lastBackupMillis, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
         ).toString()
+
+    /** Shown under the "Back up automatically" switch: every change is synced, not a timetable. */
+    fun autoSyncLabel(): String {
+        val where = if (driveConnected) "Google Drive" else "this device"
+        return "Updates $where after every change · Last: ${lastBackupLabel()}"
+    }
 
     fun nextBackupLabel(): String =
         if (lastBackupMillis == 0L) "Runs the next time you open the app"
@@ -117,10 +127,47 @@ object BackupRepository {
     private const val K_LAST = "last_backup"
     private const val K_LAST_BYTES = "last_bytes"
     private const val K_LAST_TARGET = "last_target"
+    private const val K_PENDING = "pending_sync"
+
+    /** Wait this long after the last change before syncing, so a burst of edits is one upload. */
+    private const val SYNC_DEBOUNCE_MS = 8_000L
+    private const val SYNC_RETRY_MS = 120_000L
+    private const val SYNC_MAX_RETRIES = 3
+
+    /**
+     * Every preference file that holds user data or settings. A change to any of these (people,
+     * visit logs, hours, folders, appearance, notification and home-layout settings…) triggers a
+     * sync. Left out on purpose: `backup_prefs` (the sync's own state), `app_lock_prefs` (never
+     * leaves the phone) and the alarm / message-pool bookkeeping files that change on their own.
+     */
+    private val WATCHED_PREFS = listOf(
+        "FlutterSharedPreferences", // people + visit logs
+        "hours_prefs",
+        "note_folders",
+        "setup_prefs",
+        "appearance_prefs",
+        "notification_prefs",
+        "home_layout_prefs",
+        "app_icon_prefs",
+        "genz_prefs",
+        "genz_profile_memory",
+        "feedback_prefs",
+    )
 
     private var store: SharedPreferences? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
+
+    // ── change-triggered sync state (all touched on the main thread only) ──
+    private var appContext: Context? = null
+    private var syncJob: Job? = null
+    private var syncing = false
+    private var changedWhileSyncing = false
+    private var syncFailures = 0
+    /** After a restore the files on disk are newer than the app's memory: never upload until restart. */
+    private var restorePending = false
+    /** SharedPreferences keeps listeners weakly, so this must stay referenced. */
+    private val changeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> notifyDataChanged() }
 
     var prefs by mutableStateOf(BackupPrefs())
         private set
@@ -150,10 +197,23 @@ object BackupRepository {
             lastBackupTarget = sp.getString(K_LAST_TARGET, null),
         )
         refreshLocalBackup(context)
+
+        val app = context.applicationContext
+        appContext = app
+        WATCHED_PREFS.forEach { name ->
+            CrashReporter.attempt("BackupRepository") {
+                app.getSharedPreferences(name, Context.MODE_PRIVATE)
+                    .registerOnSharedPreferenceChangeListener(changeListener)
+            }
+        }
+        watchNetwork(app)
     }
 
     // ── settings ──
-    fun setAutoBackup(on: Boolean) = update { it.copy(autoBackup = on) }
+    fun setAutoBackup(on: Boolean) {
+        update { it.copy(autoBackup = on) }
+        if (on) scheduleSync() // first sync right away, then after every change
+    }
     fun setFrequency(f: BackupFrequency) = update { it.copy(frequency = f) }
     fun setWifiOnly(on: Boolean) = update { it.copy(wifiOnly = on) }
 
@@ -184,6 +244,7 @@ object BackupRepository {
     }
 
     fun cancel() {
+        if ((task as? BackupTask.Running)?.kind == BackupKind.Restore) restorePending = false
         job?.cancel()
         task = BackupTask.Idle
     }
@@ -195,6 +256,11 @@ object BackupRepository {
         block: suspend (BackupReport) -> BackupTaskResult,
     ) {
         job?.cancel()
+        if (kind == BackupKind.Restore) {
+            // Stop auto-sync for good: the old in-memory data must not overwrite what we restore.
+            restorePending = true
+            syncJob?.cancel()
+        }
         job = scope.launch {
             task = BackupTask.Running(kind, target, steps, 0, null)
             try {
@@ -204,8 +270,129 @@ object BackupRepository {
                 throw e
             } catch (e: Exception) {
                 CrashReporter.record("BackupRepository", e)
+                if (kind == BackupKind.Restore) restorePending = false // nothing was replaced
                 task = BackupTask.Failed(kind, e.message ?: "Something went wrong")
             }
+        }
+    }
+
+    // ───────────── Automatic sync after every change ─────────────
+
+    /**
+     * Call whenever user data changes (notes, people, visit logs, hours, settings). Safe from any
+     * thread. Does nothing unless "Back up automatically" is on. Preference files listed in
+     * [WATCHED_PREFS] call this by themselves; the notes file calls it after each write.
+     */
+    fun notifyDataChanged() {
+        scope.launch { scheduleSync() }
+    }
+
+    private fun scheduleSync() {
+        if (!prefs.autoBackup || restorePending || store == null) return
+        store?.edit()?.putBoolean(K_PENDING, true)?.apply()
+        if (syncing) {
+            changedWhileSyncing = true
+            return
+        }
+        syncJob?.cancel()
+        syncJob = scope.launch {
+            delay(SYNC_DEBOUNCE_MS)
+            syncNow()
+        }
+    }
+
+    private suspend fun syncNow() {
+        val app = appContext ?: return
+        if (!prefs.autoBackup || restorePending) return
+        if (task is BackupTask.Running) { // a manual backup/restore is in progress: try again shortly
+            scheduleSync()
+            return
+        }
+        // Wi-Fi only: stay pending; the network callback (or next launch) picks it up.
+        if (prefs.driveConnected && prefs.wifiOnly && !onUnmeteredNetwork(app)) return
+
+        syncing = true
+        changedWhileSyncing = false
+        var failed = false
+        try {
+            withContext(Dispatchers.IO) { silentBackup(app) }
+            refreshLocalBackup(app)
+            syncFailures = 0
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failed = true
+            store?.edit()?.putBoolean(K_PENDING, true)?.apply() // keep it queued
+            if (e !is IOException) CrashReporter.record("BackupRepository", e, "Auto sync failed")
+        } finally {
+            syncing = false
+        }
+        if (failed) {
+            syncFailures++
+            if (syncFailures <= SYNC_MAX_RETRIES) {
+                syncJob = scope.launch { delay(SYNC_RETRY_MS); syncNow() }
+            }
+        } else if (changedWhileSyncing) {
+            scheduleSync()
+        }
+    }
+
+    /** Same data as a manual backup, but with no progress screen. Drive when connected, else the on-device file. */
+    private suspend fun silentBackup(app: Context) {
+        // Cleared before reading, so a change made during the upload sets it again.
+        store?.edit()?.putBoolean(K_PENDING, false)?.apply()
+        try {
+            if (prefs.driveConnected) {
+                val tmp = File(app.cacheDir, "auto-sync-${System.currentTimeMillis()}.zip")
+                try {
+                    FileOutputStream(tmp).use { writeZip(app, it) { } }
+                    val bytes = DriveBackup.uploadBackup(app, tmp)
+                    markBackedUp(bytes, "Google Drive")
+                    clearLocalBackup(app)
+                } finally {
+                    tmp.delete()
+                }
+            } else {
+                val dir = backupDir(app).apply { mkdirs() }
+                val file = File(dir, LOCAL_NAME)
+                val tmp = File(dir, "$LOCAL_NAME.tmp")
+                try {
+                    FileOutputStream(tmp).use { writeZip(app, it) { } }
+                    verifyZip { tmp.inputStream() }
+                    if (!tmp.renameTo(file)) tmp.copyTo(file, overwrite = true)
+                    markBackedUp(file.length(), "This device")
+                } finally {
+                    tmp.delete()
+                }
+            }
+        } catch (e: Exception) {
+            store?.edit()?.putBoolean(K_PENDING, true)?.apply()
+            throw e
+        }
+    }
+
+    private fun onUnmeteredNetwork(app: Context): Boolean = try {
+        val cm = app.getSystemService(ConnectivityManager::class.java)
+        val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    } catch (e: SecurityException) {
+        true // can't tell: don't block the sync
+    }
+
+    /** When a connection comes back (e.g. Wi-Fi), send whatever is still waiting. */
+    private fun watchNetwork(app: Context) {
+        CrashReporter.attempt("BackupRepository") {
+            val cm = app.getSystemService(ConnectivityManager::class.java) ?: return@attempt
+            cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    scope.launch {
+                        if (store?.getBoolean(K_PENDING, false) == true && !syncing) {
+                            syncFailures = 0
+                            scheduleSync()
+                        }
+                    }
+                }
+            })
         }
     }
 
@@ -274,6 +461,11 @@ object BackupRepository {
     fun runAutoBackupIfDue(ctx: Context) {
         val p = prefs
         if (!p.autoBackup || task is BackupTask.Running) return
+        // A change made earlier that never reached Drive (offline, Wi-Fi only, app killed).
+        if (store?.getBoolean(K_PENDING, false) == true) {
+            scheduleSync()
+            return
+        }
         val due = p.lastBackupMillis == 0L ||
             System.currentTimeMillis() - p.lastBackupMillis >= p.frequency.days * BACKUP_DAY_MS
         if (due) backup(ctx)

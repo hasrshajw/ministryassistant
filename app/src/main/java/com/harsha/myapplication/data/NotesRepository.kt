@@ -154,6 +154,7 @@ object NotesRepository {
                     writeNotes(writer, snapshot)
                     writer.flush()          // flush only: AtomicFile closes the stream in finishWrite
                     file.finishWrite(out)
+                    BackupRepository.notifyDataChanged() // auto-sync add / edit / delete of notes
                 } catch (e: IOException) {
                     CrashReporter.record(TAG, e, "Failed to save notes")
                     file.failWrite(out)

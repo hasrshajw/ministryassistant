@@ -247,7 +247,7 @@ fun ProfileScreen(
                                 tileShape = MaterialShapes.Clover4Leaf.toShape(),
                                 title = "Backup status",
                                 subtitle = if (prefs.autoBackup) {
-                                    "Auto-backup ${prefs.frequency.label.lowercase()}"
+                                    "Auto-syncs after every change"
                                 } else {
                                     "Manual backups only"
                                 },

@@ -81,7 +81,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
-import com.harsha.myapplication.data.BackupFrequency
 import com.harsha.myapplication.data.BackupKind
 import com.harsha.myapplication.data.BackupPrefs
 import com.harsha.myapplication.data.BackupRepository
@@ -319,7 +318,7 @@ fun BackupScreen(onBack: () -> Unit) {
                     BkRow(
                         pos = BkPos(first = true, last = !prefs.autoBackup), tone = BkTone.Primary,
                         icon = Icons.Outlined.Schedule, title = "Back up automatically",
-                        subtitle = if (prefs.autoBackup) prefs.nextBackupLabel() else "Off",
+                        subtitle = if (prefs.autoBackup) prefs.autoSyncLabel() else "Off",
                         onClick = { BackupRepository.setAutoBackup(!prefs.autoBackup) },
                         trailing = { BkSwitch(prefs.autoBackup, BackupRepository::setAutoBackup) },
                     )
@@ -329,16 +328,6 @@ fun BackupScreen(onBack: () -> Unit) {
                         exit = shrinkVertically(motion.defaultSpatialSpec()) + fadeOut(motion.fastEffectsSpec()),
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(BkGroupGap)) {
-                            BkPanel(BkPos(first = false, last = false)) {
-                                Text("How often", style = MaterialTheme.typography.bodyLarge)
-                                Spacer(Modifier.height(12.dp))
-                                BkChoiceGroup(
-                                    options = BackupFrequency.entries,
-                                    selected = prefs.frequency,
-                                    label = { it.label },
-                                    onSelect = BackupRepository::setFrequency,
-                                )
-                            }
                             BkRow(
                                 pos = BkPos(first = false, last = true), tone = BkTone.Neutral,
                                 icon = Icons.Outlined.Wifi, title = "Only on Wi-Fi",
