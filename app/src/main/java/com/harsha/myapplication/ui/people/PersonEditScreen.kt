@@ -80,6 +80,8 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
@@ -756,7 +758,7 @@ private fun ExpressiveField(
                     enter = scaleIn(Motion.spatialFast) + fadeIn(effects()),
                     exit = scaleOut(Motion.spatialFast) + fadeOut(effects()),
                 ) {
-                    IconButton(onClick = { onValueChange("") }) {
+                    IconButton(onClick = { onValueChange("") }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Default.Close, contentDescription = "Clear $label")
                     }
                 }
@@ -922,7 +924,7 @@ private fun NoteField(
                     enter = scaleIn(Motion.spatialFast) + fadeIn(effects()),
                     exit = scaleOut(Motion.spatialFast) + fadeOut(effects()),
                 ) {
-                    IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(36.dp)) {
+                    IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(36.dp), shapes = IconButtonDefaults.shapes()) {
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "Clear $label",
@@ -1248,9 +1250,10 @@ private fun DatePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
             TextButton(
                 enabled = state.selectedDateMillis != null,
                 onClick = { state.selectedDateMillis?.let { onConfirm(utc.format(Date(it))) } },
+                shapes = ButtonDefaults.shapes(),
             ) { Text("OK") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
     ) {
         DatePicker(state = state)
     }
@@ -1284,8 +1287,9 @@ private fun TimePickerSheet(initial: String, onConfirm: (String) -> Unit, onDism
                     set(Calendar.MINUTE, state.minute)
                 }
                 onConfirm(fmt.format(cal.time))
-            }) { Text("OK") }
+            },
+                shapes = ButtonDefaults.shapes()) { Text("OK") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
     )
 }

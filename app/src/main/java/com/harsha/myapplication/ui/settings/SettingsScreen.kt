@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -565,6 +566,7 @@ private fun ProfileSignInCard(onClick: () -> Unit, modifier: Modifier = Modifier
                 FilledTonalButton(
                     onClick = onClick,
                     contentPadding = PaddingValues(horizontal = 16.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) {
                     Text("Sign in", style = typography.labelLargeEmphasized)
                 }

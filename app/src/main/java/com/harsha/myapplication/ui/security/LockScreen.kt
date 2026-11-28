@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
@@ -309,13 +310,13 @@ fun LockScreen(modifier: Modifier = Modifier) {
                     badgeOpen = unlocking,
                     footer = {
                         if (canUseBiometric) {
-                            TextButton(onClick = { promptBiometric() }) {
+                            TextButton(onClick = { promptBiometric() }, shapes = ButtonDefaults.shapes()) {
                                 Icon(Icons.Filled.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.size(8.dp))
                                 Text("Use fingerprint")
                             }
                         }
-                        TextButton(onClick = { errorText = null; mode = LockMode.Recovery }) { Text("Forgot PIN?") }
+                        TextButton(onClick = { errorText = null; mode = LockMode.Recovery }, shapes = ButtonDefaults.shapes()) { Text("Forgot PIN?") }
                     },
                 )
                 LockMode.Recovery -> RecoveryAnswerPanel(
@@ -394,10 +395,10 @@ private fun RecoveryAnswerPanel(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(20.dp))
-            Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth()) { Text("Continue") }
+            Button(onClick = ::submit, enabled = canSubmit, modifier = Modifier.fillMaxWidth(), shapes = ButtonDefaults.shapes()) { Text("Continue") }
         }
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onBack) { Text("Back to PIN") }
+        TextButton(onClick = onBack, shapes = ButtonDefaults.shapes()) { Text("Back to PIN") }
     }
 }
 
@@ -453,7 +454,7 @@ internal fun QuestionPanel(
             Text(errorText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
         Spacer(Modifier.height(16.dp))
-        Button(onClick = ::save, enabled = canSave, modifier = Modifier.fillMaxWidth()) { Text(buttonText) }
+        Button(onClick = ::save, enabled = canSave, modifier = Modifier.fillMaxWidth(), shapes = ButtonDefaults.shapes()) { Text(buttonText) }
     }
 }
 
@@ -571,6 +572,6 @@ private fun DonePage(askQuestion: Boolean, onDone: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(28.dp))
-        Button(onClick = onDone) { Text("Got it") }
+        Button(onClick = onDone, shapes = ButtonDefaults.shapes()) { Text("Got it") }
     }
 }

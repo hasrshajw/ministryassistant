@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -2248,7 +2249,8 @@ fun NoteEditorView(
                         showDiscardDialog = false
                         discardAndExit()
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Discard", fontFamily = Lexend) }
             },
             confirmButton = {
@@ -2257,7 +2259,8 @@ fun NoteEditorView(
                         showDiscardDialog = false
                         saveAndExit()
                     },
-                    enabled = canSave
+                    enabled = canSave,
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Save", fontFamily = Lexend) }
             }
         )
@@ -2303,7 +2306,7 @@ fun NoteEditorView(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
+                TextButton(onClick = { showDeleteDialog = false }, shapes = ButtonDefaults.shapes()) {
                     Text("Cancel", fontFamily = Lexend)
                 }
             },
@@ -2318,7 +2321,8 @@ fun NoteEditorView(
                             onDelete?.invoke(id)
                         }
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Delete", fontFamily = Lexend) }
             }
         )
@@ -2337,7 +2341,7 @@ fun NoteEditorView(
                 )
             },
             dismissButton = {
-                TextButton(onClick = { pendingRemoveIdx = null }) {
+                TextButton(onClick = { pendingRemoveIdx = null }, shapes = ButtonDefaults.shapes()) {
                     Text("Cancel", fontFamily = Lexend)
                 }
             },
@@ -2347,7 +2351,8 @@ fun NoteEditorView(
                         pendingRemoveIdx = null
                         confirmRemoveImage(idx)
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error)
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.error),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Remove", fontFamily = Lexend) }
             }
         )

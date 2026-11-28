@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -165,13 +166,15 @@ internal fun NewFolderDialog(
                     enabled = canAdd,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(52.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("OK", fontFamily = Lexend, fontWeight = FontWeight.Medium, fontSize = 16.sp) }
                 TextButton(
                     onClick = onDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 48.dp),
+                    shapes = ButtonDefaults.shapes(),
                 ) { Text("Cancel", fontFamily = Lexend, fontWeight = FontWeight.Medium, fontSize = 16.sp) }
             }
         }

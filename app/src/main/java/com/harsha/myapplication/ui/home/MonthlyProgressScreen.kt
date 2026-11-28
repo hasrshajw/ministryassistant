@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -109,14 +111,14 @@ fun MonthlyProgressScreen(onBack: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    IconButton(onClick = { monthOffset -= 1 }) {
+                    IconButton(onClick = { monthOffset -= 1 }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Default.ChevronLeft, contentDescription = "Previous month")
                     }
                     Text(
                         SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(monthCal.time),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    IconButton(onClick = { monthOffset += 1 }, enabled = !isCurrentMonth) {
+                    IconButton(onClick = { monthOffset += 1 }, enabled = !isCurrentMonth, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Default.ChevronRight, contentDescription = "Next month")
                     }
                 }
@@ -220,7 +222,7 @@ fun MonthlyProgressScreen(onBack: () -> Unit) {
                                     color = colors.primary,
                                 )
                             }
-                            IconButton(onClick = { deleteTarget = entry }) {
+                            IconButton(onClick = { deleteTarget = entry }, shapes = IconButtonDefaults.shapes()) {
                                 Icon(
                                     Icons.Default.Delete,
                                     contentDescription = "Delete entry",
@@ -245,9 +247,10 @@ fun MonthlyProgressScreen(onBack: () -> Unit) {
                 TextButton(onClick = {
                     HoursRepository.delete(context, entry.id)
                     deleteTarget = null
-                }) { Text("Delete") }
+                },
+                    shapes = ButtonDefaults.shapes()) { Text("Delete") }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
         )
     }
 }

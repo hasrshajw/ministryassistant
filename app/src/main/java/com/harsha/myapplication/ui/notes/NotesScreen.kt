@@ -50,6 +50,8 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -1138,7 +1140,7 @@ private fun NotesDrawerPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             DrawerSectionHeader("Other folders", Modifier.weight(1f))
-            FilledTonalIconButton(onClick = onCreateFolderClick) {
+            FilledTonalIconButton(onClick = onCreateFolderClick, shapes = IconButtonDefaults.shapes()) {
                 Icon(
                     Icons.Outlined.CreateNewFolder,
                     contentDescription = "New folder",
@@ -1271,7 +1273,7 @@ private fun DrawerRow(
                         Spacer(Modifier.width(4.dp))
                     }
                     if (onEditClick != null) {
-                        IconButton(onClick = onEditClick, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = onEditClick, modifier = Modifier.size(36.dp), shapes = IconButtonDefaults.shapes()) {
                             Icon(
                                 Icons.Outlined.Edit,
                                 contentDescription = "Edit folder $label",
@@ -1391,8 +1393,9 @@ private fun EditFolderDialog(
             TextButton(
                 onClick = { onSave(trimmed, Color(selectedArgb)) },
                 enabled = error == null && !unchanged,
+                shapes = ButtonDefaults.shapes(),
             ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel") } },
     )
 }

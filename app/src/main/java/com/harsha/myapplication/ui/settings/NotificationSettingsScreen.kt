@@ -47,6 +47,7 @@ import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -939,11 +940,11 @@ private fun TimeDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
                         Text("Cancel", style = typography.labelLarge)
                     }
                     Spacer(Modifier.width(8.dp))
-                    TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }) {
+                    TextButton(onClick = { onConfirm(state.hour * 60 + state.minute) }, shapes = ButtonDefaults.shapes()) {
                         Text("OK", style = typography.labelLargeEmphasized)
                     }
                 }
@@ -1008,12 +1009,12 @@ private fun CustomDurationDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(total!!) }, enabled = valid) {
+            TextButton(onClick = { onConfirm(total!!) }, enabled = valid, shapes = ButtonDefaults.shapes()) {
                 Text("Set", style = typography.labelLargeEmphasized)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", style = typography.labelLarge) }
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) { Text("Cancel", style = typography.labelLarge) }
         },
         shape = MaterialTheme.shapes.extraLargeIncreased,
         containerColor = colors.surfaceContainerHigh

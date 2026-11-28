@@ -94,6 +94,8 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Button
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -873,11 +875,11 @@ private fun BibleSourceRow(
                 state is BibleDownloads.State.Downloading || state is BibleDownloads.State.Importing ->
                     LoadingIndicator(modifier = Modifier.size(28.dp))
                 state is BibleDownloads.State.Failed ->
-                    FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                    FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp), shapes = ButtonDefaults.shapes()) {
                         Text("Retry")
                     }
                 done -> Icon(Icons.Default.Check, null, tint = scheme.primary, modifier = Modifier.size(24.dp))
-                else -> FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp)) {
+                else -> FilledTonalButton(onClick = onStart, contentPadding = PaddingValues(horizontal = 14.dp), shapes = ButtonDefaults.shapes()) {
                     Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Get")
@@ -1063,7 +1065,8 @@ private fun StepperButton(icon: ImageVector, description: String, onClick: () ->
         interactionSource = src,
         modifier = Modifier
             .size(48.dp)
-            .pressScale(src, 0.9f)
+            .pressScale(src, 0.9f),
+        shapes = IconButtonDefaults.shapes(),
     ) {
         Icon(icon, contentDescription = description)
     }

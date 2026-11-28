@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.RoundedCorner
 import androidx.compose.material3.*
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -238,7 +240,8 @@ internal fun ImageViewer(name: String, onDismiss: () -> Unit) {
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(8.dp)
+                    .padding(8.dp),
+                shapes = IconButtonDefaults.shapes(),
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
